@@ -1,0 +1,1076 @@
+import { randomBytes, randomUUID } from "node:crypto"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import path from "node:path"
+
+import { isCategory } from "@/lib/categories"
+import { DEMO_ACCOUNTS } from "@/lib/env"
+import { AppError } from "@/lib/errors"
+import { editClearsFlags, flagBlockReason, resolveFlagBlockReason } from "@/lib/disputes"
+import {
+  computeBalances,
+  isExpenseLocked,
+  lockDate,
+  pairwiseIOwe,
+  payableShares,
+  simplifyDebts,
+  validateShares,
+  type LedgerSettlement,
+} from "@/lib/ledger"
+import { monthStartISO } from "@/lib/money"
+import type {
+  ActivityItem,
+  Balance,
+  ShareNotice,
+  Expense,
+  GroupCard,
+  GroupDetail,
+  GroupSummary,
+  InvitePreview,
+  Member,
+  AppUser,
+  CreatedAccount,
+  SaveExpenseInput,
+  SessionUser,
+  Settlement,
+} from "@/lib/types"
+import { adminBlockReason, generateSecret, mutateUserBlockReason, signInBlockReason } from "@/lib/admin"
+import { groupAdminBlockReason, promoteMemberBlockReason, removeMemberBlockReason } from "@/lib/group-access"
+import { hashPassword, verifyPassword } from "@/lib/demo/password"
+import { DEMO_INVITES, IDS, seedExpenses } from "@/lib/demo/seed-data"
+
+type DemoUser = {
+  id: string
+  email: string
+  displayName: string
+  passwordHash: string
+  passwordSalt: string
+  createdAt: string
+  isAdmin: boolean
+  disabled: boolean
+  invited: boolean
+}
+
+type AccountInvite = {
+  id: string
+  userId: string
+  token: string
+  expiresAt: string
+  usedAt: string | null
+}
+
+type DemoExpense = Omit<Expense, "locked" | "disputed" | "flags">
+
+type DemoFlag = {
+  id: string
+  expenseId: string
+  userId: string
+  reason: string | null
+  createdAt: string
+  resolvedAt: string | null
+  resolvedBy: string | null
+}
+
+type DemoNotice = {
+  id: string
+  userId: string
+  expenseId: string
+  groupId: string
+  actorId: string
+  sharePaise: number
+  createdAt: string
+  seenAt: string | null
+}
+
+type DemoDb = {
+  users: DemoUser[]
+  groups: { id: string; name: string; createdBy: string; createdAt: string }[]
+  members: { groupId: string; userId: string; role: "admin" | "member"; joinedAt: string }[]
+  invites: {
+    id: string
+    groupId: string
+    code: string
+    createdBy: string
+    expiresAt: string
+    createdAt: string
+  }[]
+  expenses: DemoExpense[]
+  settlements: Settlement[]
+  accountInvites: AccountInvite[]
+  flags: DemoFlag[]
+  notices: DemoNotice[]
+}
+
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+function dbPath() {
+  return process.env.HISSA_DEMO_DB ?? path.join(process.cwd(), ".data", "demo-db.json")
+}
+
+let queue: Promise<unknown> = Promise.resolve()
+
+function withDb<T>(fn: (db: DemoDb) => T | Promise<T>): Promise<T> {
+  const run = queue.then(async () => fn(await load()))
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+async function load(): Promise<DemoDb> {
+  const file = dbPath()
+  try {
+    const raw = await readFile(/* turbopackIgnore: true */ file, "utf8")
+    return normalize(JSON.parse(raw) as DemoDb)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+    const seeded = createSeed()
+    await persist(seeded)
+    return seeded
+  }
+}
+
+async function persist(db: DemoDb) {
+  const file = dbPath()
+  await mkdir(path.dirname(file), { recursive: true })
+  await writeFile(/* turbopackIgnore: true */ file, JSON.stringify(db, null, 2))
+}
+
+function normalize(db: DemoDb): DemoDb {
+  db.accountInvites ??= []
+  db.flags ??= []
+  db.notices ??= []
+  db.members = (db.members ?? []).map((member) => ({
+    ...member,
+    role: member.role === "member" ? "member" : "admin",
+  }))
+  db.users = db.users.map((user) => ({
+    ...user,
+    isAdmin: user.isAdmin ?? user.id === IDS.aarav,
+    disabled: user.disabled ?? false,
+    invited: user.invited ?? true,
+  }))
+  return db
+}
+
+function createSeed(): DemoDb {
+  const createdAt = "2026-09-01T08:00:00.000Z"
+  const users = DEMO_ACCOUNTS.map((account, index) => {
+    const { hash, salt } = hashPassword(account.password)
+    return {
+      id: index === 0 ? IDS.aarav : IDS.meera,
+      email: account.email,
+      displayName: account.name,
+      passwordHash: hash,
+      passwordSalt: salt,
+      createdAt,
+      isAdmin: index === 0,
+      disabled: false,
+      invited: true,
+    }
+  })
+
+  return {
+    users,
+    groups: [
+      { id: IDS.flat, name: "Flat 4B", createdBy: IDS.aarav, createdAt: "2026-09-02T08:00:00.000Z" },
+      { id: IDS.trip, name: "Monsoon trip", createdBy: IDS.meera, createdAt: "2026-11-02T08:00:00.000Z" },
+    ],
+    members: [
+      { groupId: IDS.flat, userId: IDS.aarav, role: "admin", joinedAt: "2026-09-02T08:00:00.000Z" },
+      { groupId: IDS.flat, userId: IDS.meera, role: "member", joinedAt: "2026-09-02T09:00:00.000Z" },
+      { groupId: IDS.trip, userId: IDS.meera, role: "admin", joinedAt: "2026-11-02T08:00:00.000Z" },
+      { groupId: IDS.trip, userId: IDS.aarav, role: "member", joinedAt: "2026-11-02T08:10:00.000Z" },
+    ],
+    invites: [
+      {
+        id: "77777777-7777-4777-8777-000000000001",
+        groupId: IDS.flat,
+        code: DEMO_INVITES.flat,
+        createdBy: IDS.aarav,
+        expiresAt: "2027-06-01T00:00:00.000Z",
+        createdAt: "2026-11-01T08:00:00.000Z",
+      },
+      {
+        id: "77777777-7777-4777-8777-000000000002",
+        groupId: IDS.trip,
+        code: DEMO_INVITES.trip,
+        createdBy: IDS.meera,
+        expiresAt: "2027-06-01T00:00:00.000Z",
+        createdAt: "2026-11-02T08:00:00.000Z",
+      },
+    ],
+    expenses: seedExpenses(),
+    settlements: [
+      {
+        id: "66666666-6666-4666-8666-000000000001",
+        groupId: IDS.flat,
+        fromUserId: IDS.meera,
+        toUserId: IDS.aarav,
+        amountPaise: 1_200_000,
+        upToDate: "2026-10-31",
+        status: "approved",
+        createdBy: IDS.meera,
+        createdAt: "2026-11-01T12:00:00.000Z",
+        resolvedAt: "2026-11-01T18:00:00.000Z",
+      },
+      {
+        id: "66666666-6666-4666-8666-000000000002",
+        groupId: IDS.flat,
+        fromUserId: IDS.meera,
+        toUserId: IDS.aarav,
+        amountPaise: 800_000,
+        upToDate: "2026-11-10",
+        status: "pending",
+        createdBy: IDS.meera,
+        createdAt: "2026-11-14T14:30:00.000Z",
+        resolvedAt: null,
+      },
+    ],
+    accountInvites: [],
+    flags: [],
+    notices: [],
+  }
+}
+
+function publicUser(user: DemoUser): SessionUser {
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    demo: true,
+    isAdmin: user.isAdmin,
+  }
+}
+
+function accessOf(user: DemoUser) {
+  return { id: user.id, isAdmin: user.isAdmin, disabled: user.disabled, invited: user.invited }
+}
+
+function requireUser(db: DemoDb, userId: string) {
+  const user = db.users.find((item) => item.id === userId)
+  if (!user || signInBlockReason(accessOf(user))) throw new AppError("You need to sign in again")
+  return user
+}
+
+function requireAdmin(db: DemoDb, userId: string) {
+  const user = requireUser(db, userId)
+  const blocked = adminBlockReason(accessOf(user))
+  if (blocked) throw new AppError(blocked)
+  return user
+}
+
+function memberIds(db: DemoDb, groupId: string) {
+  return db.members.filter((member) => member.groupId === groupId).map((member) => member.userId)
+}
+
+function assertMember(db: DemoDb, groupId: string, userId: string) {
+  if (!memberIds(db, groupId).includes(userId)) throw new AppError("You are not in this group")
+}
+
+function membersOf(db: DemoDb, groupId: string): Member[] {
+  return db.members
+    .filter((member) => member.groupId === groupId)
+    .map((member) => {
+      const user = db.users.find((item) => item.id === member.userId)
+      return {
+        id: member.userId,
+        displayName: user?.displayName ?? "Someone",
+        email: user?.email ?? "",
+        role: member.role === "member" ? ("member" as const) : ("admin" as const),
+      }
+    })
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+}
+
+function ledgerSettlements(rows: Settlement[]): LedgerSettlement[] {
+  return rows.map((settlement) => ({
+    fromUserId: settlement.fromUserId,
+    toUserId: settlement.toUserId,
+    amountPaise: settlement.amountPaise,
+    status: settlement.status,
+    upToDate: settlement.upToDate,
+  }))
+}
+
+function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail | null {
+  const group = db.groups.find((item) => item.id === groupId)
+  if (!group || !memberIds(db, groupId).includes(userId)) return null
+  const members = membersOf(db, groupId)
+  const settlements = db.settlements
+    .filter((settlement) => settlement.groupId === groupId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const lockedThrough = lockDate(ledgerSettlements(settlements))
+  const expenses: Expense[] = db.expenses
+    .filter((expense) => expense.groupId === groupId)
+    .map((expense) => {
+      const flags = (db.flags ?? [])
+        .filter((flag) => flag.expenseId === expense.id && !flag.resolvedAt)
+        .map((flag) => ({
+          id: flag.id,
+          userId: flag.userId,
+          reason: flag.reason,
+          createdAt: flag.createdAt,
+        }))
+      return {
+        ...expense,
+        shares: expense.shares.filter((share) => share.sharePaise > 0),
+        locked: isExpenseLocked(expense.expenseDate, lockedThrough),
+        disputed: flags.length > 0,
+        flags,
+      }
+    })
+    .sort((a, b) => b.expenseDate.localeCompare(a.expenseDate) || b.createdAt.localeCompare(a.createdAt))
+  const balances: Balance[] = computeBalances(
+    members.map((member) => member.id),
+    expenses,
+    ledgerSettlements(settlements),
+  )
+  const mine = balances.find((balance) => balance.userId === userId)
+  return {
+    id: group.id,
+    name: group.name,
+    createdBy: group.createdBy,
+    members,
+    expenses,
+    balances,
+    debts: simplifyDebts(balances),
+    settlements,
+    myNetPaise: mine?.netPaise ?? 0,
+    lockDate: lockedThrough,
+    myRole:
+      db.members.find((member) => member.groupId === groupId && member.userId === userId)?.role === "admin"
+        ? "admin"
+        : "member",
+  }
+}
+
+function assertDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    throw new AppError("Choose a valid date")
+  }
+}
+
+function inviteCode() {
+  const bytes = randomBytes(8)
+  return [...bytes].map((byte) => ALPHABET[byte % ALPHABET.length]).join("")
+}
+
+export async function authenticate(email: string, password: string): Promise<SessionUser> {
+  return withDb((db) => {
+    const user = db.users.find((item) => item.email === email.trim().toLowerCase())
+    if (!user || !verifyPassword(password, user.passwordHash, user.passwordSalt)) {
+      throw new AppError("Email or password is incorrect")
+    }
+    const blocked = signInBlockReason(accessOf(user))
+    if (blocked) throw new AppError(blocked)
+    return publicUser(user)
+  })
+}
+
+export async function register(): Promise<SessionUser> {
+  throw new AppError("Access is by invite only")
+}
+
+export async function getUser(userId: string): Promise<SessionUser | null> {
+  return withDb((db) => {
+    const user = db.users.find((item) => item.id === userId)
+    if (!user || signInBlockReason(accessOf(user))) return null
+    return publicUser(user)
+  })
+}
+
+function toAppUser(user: DemoUser): AppUser {
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    isAdmin: user.isAdmin,
+    disabled: user.disabled,
+    createdAt: user.createdAt,
+  }
+}
+
+function userHasHistory(db: DemoDb, userId: string) {
+  return (
+    db.expenses.some(
+      (expense) => expense.payerId === userId || expense.shares.some((share) => share.userId === userId),
+    ) ||
+    db.settlements.some((settlement) => settlement.fromUserId === userId || settlement.toUserId === userId)
+  )
+}
+
+export async function listAppUsers(actorId: string): Promise<AppUser[]> {
+  return withDb((db) => {
+    requireAdmin(db, actorId)
+    return db.users.map(toAppUser).sort((a, b) => a.displayName.localeCompare(b.displayName))
+  })
+}
+
+export async function createAccount(
+  actorId: string,
+  input: { email: string; displayName: string },
+): Promise<CreatedAccount> {
+  return withDb(async (db) => {
+    requireAdmin(db, actorId)
+    const email = input.email.trim().toLowerCase()
+    const displayName = input.displayName.trim()
+    if (displayName.length < 2 || displayName.length > 40) {
+      throw new AppError("Name must be 2–40 characters")
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError("Enter a valid email")
+    if (db.users.some((user) => user.email === email)) {
+      throw new AppError("An account with that email already exists")
+    }
+    const temporaryPassword = generateSecret(12)
+    const { hash, salt } = hashPassword(temporaryPassword)
+    const user: DemoUser = {
+      id: randomUUID(),
+      email,
+      displayName,
+      passwordHash: hash,
+      passwordSalt: salt,
+      createdAt: new Date().toISOString(),
+      isAdmin: false,
+      disabled: false,
+      invited: true,
+    }
+    const token = generateSecret(24)
+    db.users.push(user)
+    db.accountInvites.push({
+      id: randomUUID(),
+      userId: user.id,
+      token,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      usedAt: null,
+    })
+    await persist(db)
+    return {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      temporaryPassword,
+      welcomePath: `/welcome/${token}`,
+    }
+  })
+}
+
+export async function setUserDisabled(actorId: string, userId: string, disabled: boolean) {
+  return withDb(async (db) => {
+    const actor = requireAdmin(db, actorId)
+    const blocked = mutateUserBlockReason(accessOf(actor), userId)
+    if (blocked) throw new AppError(blocked)
+    const target = db.users.find((user) => user.id === userId)
+    if (!target) throw new AppError("That person is not on Hissa")
+    target.disabled = disabled
+    await persist(db)
+  })
+}
+
+export async function removeUser(actorId: string, userId: string) {
+  return withDb(async (db) => {
+    const actor = requireAdmin(db, actorId)
+    const blocked = mutateUserBlockReason(accessOf(actor), userId)
+    if (blocked) throw new AppError(blocked)
+    const target = db.users.find((user) => user.id === userId)
+    if (!target) throw new AppError("That person is not on Hissa")
+    if (userHasHistory(db, userId)) {
+      throw new AppError("This person has expenses. Disable their account instead.")
+    }
+    db.users = db.users.filter((user) => user.id !== userId)
+    db.members = db.members.filter((member) => member.userId !== userId)
+    db.accountInvites = db.accountInvites.filter((invite) => invite.userId !== userId)
+    db.invites = db.invites.filter((invite) => invite.createdBy !== userId)
+    await persist(db)
+  })
+}
+
+export async function redeemWelcome(token: string, password: string) {
+  return withDb(async (db) => {
+    const invite = db.accountInvites.find((item) => item.token === token)
+    if (!invite || invite.usedAt || Date.parse(invite.expiresAt) <= Date.now()) {
+      throw new AppError("This invite link is invalid or expired")
+    }
+    if (password.length < 8) throw new AppError("Use at least 8 characters")
+    const user = db.users.find((item) => item.id === invite.userId)
+    if (!user) throw new AppError("This invite link is invalid or expired")
+    const { hash, salt } = hashPassword(password)
+    user.passwordHash = hash
+    user.passwordSalt = salt
+    user.invited = true
+    invite.usedAt = new Date().toISOString()
+    await persist(db)
+    return user.email
+  })
+}
+
+export async function updateName(userId: string, displayName: string): Promise<SessionUser> {
+  return withDb(async (db) => {
+    const user = requireUser(db, userId)
+    const name = displayName.trim()
+    if (name.length < 2 || name.length > 40) throw new AppError("Name must be 2–40 characters")
+    user.displayName = name
+    await persist(db)
+    return publicUser(user)
+  })
+}
+
+export async function listGroups(userId: string): Promise<GroupCard[]> {
+  return withDb((db) => {
+    requireUser(db, userId)
+    return db.groups
+      .filter((group) => memberIds(db, group.id).includes(userId))
+      .map((group) => {
+        const detail = presentGroup(db, group.id, userId)!
+        return {
+          id: group.id,
+          name: group.name,
+          members: detail.members,
+          myNetPaise: detail.myNetPaise,
+          pendingForMe: detail.settlements.filter(
+            (settlement) => settlement.status === "pending" && settlement.toUserId === userId,
+          ).length,
+          disputedCount: detail.expenses.filter((expense) => expense.disputed).length,
+        }
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+  })
+}
+
+export async function createGroup(userId: string, name: string): Promise<string> {
+  return withDb(async (db) => {
+    requireUser(db, userId)
+    const trimmed = name.trim()
+    if (trimmed.length < 1 || trimmed.length > 80) {
+      throw new AppError("Group name must be 1–80 characters")
+    }
+    const id = randomUUID()
+    const now = new Date().toISOString()
+    db.groups.push({ id, name: trimmed, createdBy: userId, createdAt: now })
+    db.members.push({ groupId: id, userId, role: "admin", joinedAt: now })
+    await persist(db)
+    return id
+  })
+}
+
+export async function getGroup(userId: string, groupId: string): Promise<GroupDetail | null> {
+  return withDb((db) => presentGroup(db, groupId, userId))
+}
+
+function assertGroupAdmin(db: DemoDb, groupId: string, userId: string) {
+  const role = db.members.find((member) => member.groupId === groupId && member.userId === userId)?.role
+  const blocked = groupAdminBlockReason(role)
+  if (blocked) throw new AppError(blocked)
+}
+
+export async function renameGroup(userId: string, groupId: string, name: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, userId)
+    const trimmed = name.trim()
+    if (trimmed.length < 1 || trimmed.length > 80) throw new AppError("Group name must be 1–80 characters")
+    const group = db.groups.find((item) => item.id === groupId)
+    if (!group) throw new AppError("That group is not available")
+    group.name = trimmed
+    await persist(db)
+  })
+}
+
+export async function deleteGroup(userId: string, groupId: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, userId)
+    db.groups = db.groups.filter((group) => group.id !== groupId)
+    db.members = db.members.filter((member) => member.groupId !== groupId)
+    db.invites = db.invites.filter((invite) => invite.groupId !== groupId)
+    const expenseIds = new Set(db.expenses.filter((expense) => expense.groupId === groupId).map((expense) => expense.id))
+    db.expenses = db.expenses.filter((expense) => expense.groupId !== groupId)
+    db.settlements = db.settlements.filter((settlement) => settlement.groupId !== groupId)
+    db.flags = db.flags.filter((flag) => !expenseIds.has(flag.expenseId))
+    db.notices = db.notices.filter((notice) => notice.groupId !== groupId)
+    await persist(db)
+  })
+}
+
+export async function removeMember(actorId: string, groupId: string, userId: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, actorId)
+    const target = db.members.find((member) => member.groupId === groupId && member.userId === userId)
+    if (!target) throw new AppError("That person is not in the group")
+    const adminCount = db.members.filter((member) => member.groupId === groupId && member.role === "admin").length
+    const blocked = removeMemberBlockReason({
+      actorRole: "admin",
+      targetRole: target.role,
+      adminCount,
+    })
+    if (blocked) throw new AppError(blocked)
+    db.members = db.members.filter((member) => !(member.groupId === groupId && member.userId === userId))
+    await persist(db)
+  })
+}
+
+export async function promoteMember(actorId: string, groupId: string, userId: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, actorId)
+    const target = db.members.find((member) => member.groupId === groupId && member.userId === userId)
+    if (!target) throw new AppError("That person is not in the group")
+    const blocked = promoteMemberBlockReason({ actorRole: "admin", targetRole: target.role })
+    if (blocked) throw new AppError(blocked)
+    target.role = "admin"
+    await persist(db)
+  })
+}
+
+export async function revokeInvites(userId: string, groupId: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, userId)
+    db.invites = db.invites.filter((invite) => invite.groupId !== groupId)
+    await persist(db)
+  })
+}
+
+export async function createInvite(userId: string, groupId: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, userId)
+    let code = inviteCode()
+    for (let attempt = 0; attempt < 5 && db.invites.some((invite) => invite.code === code); attempt++) {
+      code = inviteCode()
+    }
+    const now = new Date()
+    const invite = {
+      id: randomUUID(),
+      groupId,
+      code,
+      createdBy: userId,
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: now.toISOString(),
+    }
+    db.invites.push(invite)
+    await persist(db)
+    return { code: invite.code, expiresAt: invite.expiresAt }
+  })
+}
+
+export async function regenerateInvite(userId: string, groupId: string) {
+  await revokeInvites(userId, groupId)
+  return createInvite(userId, groupId)
+}
+
+export async function previewInvite(userId: string | null, code: string): Promise<InvitePreview> {
+  return withDb((db) => {
+    const invite = db.invites.find((item) => item.code === code.trim().toUpperCase())
+    if (!invite) return { valid: false, reason: "invalid" }
+    if (Date.parse(invite.expiresAt) <= Date.now()) return { valid: false, reason: "expired" }
+    const group = db.groups.find((item) => item.id === invite.groupId)
+    if (!group) return { valid: false, reason: "invalid" }
+    const already = userId ? memberIds(db, group.id).includes(userId) : false
+    return {
+      valid: true,
+      reason: already ? "already_member" : undefined,
+      groupId: group.id,
+      groupName: group.name,
+      expiresAt: invite.expiresAt,
+      memberCount: memberIds(db, group.id).length,
+    }
+  })
+}
+
+export async function joinByCode(userId: string, code: string) {
+  return withDb(async (db) => {
+    requireUser(db, userId)
+    const invite = db.invites.find((item) => item.code === code.trim().toUpperCase())
+    if (!invite) throw new AppError("This invite is invalid")
+    if (Date.parse(invite.expiresAt) <= Date.now()) throw new AppError("This invite has expired")
+    if (memberIds(db, invite.groupId).includes(userId)) {
+      return { groupId: invite.groupId, alreadyMember: true }
+    }
+    db.members.push({
+      groupId: invite.groupId,
+      userId,
+      role: "member",
+      joinedAt: new Date().toISOString(),
+    })
+    await persist(db)
+    return { groupId: invite.groupId, alreadyMember: false }
+  })
+}
+
+export async function saveExpense(userId: string, input: SaveExpenseInput): Promise<string> {
+  return withDb(async (db) => {
+    assertMember(db, input.groupId, userId)
+    const description = input.description.trim()
+    if (description.length < 1 || description.length > 80) {
+      throw new AppError("Description must be 1–80 characters")
+    }
+    assertDate(input.expenseDate)
+    if (input.category && !isCategory(input.category)) throw new AppError("Unknown category")
+    if (!memberIds(db, input.groupId).includes(input.payerId)) {
+      throw new AppError("The payer needs to be in the group")
+    }
+    for (const share of input.shares) {
+      if (!memberIds(db, input.groupId).includes(share.userId)) {
+        throw new AppError("Every share must belong to someone in the group")
+      }
+    }
+    const shares = payableShares(input.shares)
+    const problem = validateShares(input.amountPaise, shares)
+    if (problem) throw new AppError(problem)
+
+    const settlements = db.settlements.filter((settlement) => settlement.groupId === input.groupId)
+    const lockedThrough = lockDate(ledgerSettlements(settlements))
+    if (isExpenseLocked(input.expenseDate, lockedThrough)) {
+      throw new AppError("That date is locked by an approved settlement")
+    }
+
+    const now = new Date().toISOString()
+    if (!input.id) {
+      const expense: DemoExpense = {
+        id: randomUUID(),
+        groupId: input.groupId,
+        description,
+        amountPaise: input.amountPaise,
+        payerId: input.payerId,
+        expenseDate: input.expenseDate,
+        category: input.category,
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now,
+        shares,
+      }
+      db.expenses.push(expense)
+      recordShareNotices(db, userId, expense, new Set())
+      await persist(db)
+      return expense.id
+    }
+
+    const existing = db.expenses.find((expense) => expense.id === input.id)
+    if (!existing || existing.groupId !== input.groupId) throw new AppError("Expense not found")
+    if (isExpenseLocked(existing.expenseDate, lockedThrough)) {
+      throw new AppError("This expense is locked by an approved settlement")
+    }
+    const previous = new Set(existing.shares.filter((share) => share.sharePaise > 0).map((share) => share.userId))
+    const previousPayer = existing.payerId
+    existing.description = description
+    existing.amountPaise = input.amountPaise
+    existing.payerId = input.payerId
+    existing.expenseDate = input.expenseDate
+    existing.category = input.category
+    existing.shares = shares
+    existing.updatedAt = now
+    if (editClearsFlags({ actorId: userId, creatorId: existing.createdBy, payerId: previousPayer }) || userId === input.payerId) {
+      for (const flag of db.flags) {
+        if (flag.expenseId === existing.id && !flag.resolvedAt) {
+          flag.resolvedAt = now
+          flag.resolvedBy = userId
+        }
+      }
+    }
+    recordShareNotices(db, userId, existing, previous)
+    await persist(db)
+    return existing.id
+  })
+}
+
+function recordShareNotices(db: DemoDb, actorId: string, expense: DemoExpense, alreadyShared: Set<string>) {
+  const now = new Date().toISOString()
+  for (const share of expense.shares) {
+    if (share.sharePaise <= 0 || share.userId === actorId || alreadyShared.has(share.userId)) continue
+    db.notices.push({
+      id: randomUUID(),
+      userId: share.userId,
+      expenseId: expense.id,
+      groupId: expense.groupId,
+      actorId,
+      sharePaise: share.sharePaise,
+      createdAt: now,
+      seenAt: null,
+    })
+  }
+}
+
+export async function deleteExpense(userId: string, expenseId: string) {
+  return withDb(async (db) => {
+    const existing = db.expenses.find((expense) => expense.id === expenseId)
+    if (!existing) throw new AppError("Expense not found")
+    assertMember(db, existing.groupId, userId)
+    const lockedThrough = lockDate(
+      ledgerSettlements(db.settlements.filter((settlement) => settlement.groupId === existing.groupId)),
+    )
+    if (isExpenseLocked(existing.expenseDate, lockedThrough)) {
+      throw new AppError("This expense is locked by an approved settlement")
+    }
+    db.expenses = db.expenses.filter((expense) => expense.id !== expenseId)
+    db.flags = db.flags.filter((flag) => flag.expenseId !== expenseId)
+    db.notices = db.notices.filter((notice) => notice.expenseId !== expenseId)
+    await persist(db)
+  })
+}
+
+export async function flagExpense(userId: string, expenseId: string, reason: string) {
+  return withDb(async (db) => {
+    const expense = db.expenses.find((item) => item.id === expenseId)
+    if (!expense) throw new AppError("Expense not found")
+    assertMember(db, expense.groupId, userId)
+    const share = expense.shares.find((item) => item.userId === userId)?.sharePaise ?? 0
+    const blocked = flagBlockReason(share)
+    if (blocked) throw new AppError(blocked)
+    const note = reason.trim()
+    if (note.length > 200) throw new AppError("Keep the note under 200 characters")
+    const open = db.flags.find((flag) => flag.expenseId === expenseId && flag.userId === userId && !flag.resolvedAt)
+    if (open) {
+      open.reason = note || null
+      await persist(db)
+      return open.id
+    }
+    const flag: DemoFlag = {
+      id: randomUUID(),
+      expenseId,
+      userId,
+      reason: note || null,
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      resolvedBy: null,
+    }
+    db.flags.push(flag)
+    await persist(db)
+    return flag.id
+  })
+}
+
+export async function resolveFlag(userId: string, flagId: string) {
+  return withDb(async (db) => {
+    const flag = db.flags.find((item) => item.id === flagId && !item.resolvedAt)
+    if (!flag) throw new AppError("That flag is already resolved")
+    const expense = db.expenses.find((item) => item.id === flag.expenseId)
+    if (!expense) throw new AppError("Expense not found")
+    const blocked = resolveFlagBlockReason({
+      actorId: userId,
+      flaggerId: flag.userId,
+      creatorId: expense.createdBy,
+    })
+    if (blocked) throw new AppError(blocked)
+    flag.resolvedAt = new Date().toISOString()
+    flag.resolvedBy = userId
+    await persist(db)
+  })
+}
+
+export async function markNoticeSeen(userId: string, noticeId: string) {
+  return withDb(async (db) => {
+    const notice = db.notices.find((item) => item.id === noticeId && item.userId === userId)
+    if (!notice || notice.seenAt) return
+    notice.seenAt = new Date().toISOString()
+    await persist(db)
+  })
+}
+
+export async function suggestSettlement(userId: string, groupId: string, otherUserId: string, upToDate: string) {
+  return withDb((db) => {
+    assertMember(db, groupId, userId)
+    if (!memberIds(db, groupId).includes(otherUserId)) throw new AppError("That person is not in the group")
+    assertDate(upToDate)
+    const expenses = db.expenses.filter((expense) => expense.groupId === groupId)
+    const settlements = db.settlements.filter((settlement) => settlement.groupId === groupId)
+    return pairwiseIOwe({
+      me: userId,
+      other: otherUserId,
+      upToDate,
+      expenses,
+      settlements: ledgerSettlements(settlements),
+    })
+  })
+}
+
+export async function requestSettlement(
+  userId: string,
+  input: { groupId: string; toUserId: string; amountPaise: number; upToDate: string },
+) {
+  return withDb(async (db) => {
+    assertMember(db, input.groupId, userId)
+    if (input.toUserId === userId) throw new AppError("Pick someone else")
+    if (!memberIds(db, input.groupId).includes(input.toUserId)) {
+      throw new AppError("That person is not in the group")
+    }
+    assertDate(input.upToDate)
+    if (!Number.isInteger(input.amountPaise) || input.amountPaise <= 0) {
+      throw new AppError("Enter an amount greater than zero")
+    }
+    const now = new Date().toISOString()
+    const settlement: Settlement = {
+      id: randomUUID(),
+      groupId: input.groupId,
+      fromUserId: userId,
+      toUserId: input.toUserId,
+      amountPaise: input.amountPaise,
+      upToDate: input.upToDate,
+      status: "pending",
+      createdBy: userId,
+      createdAt: now,
+      resolvedAt: null,
+    }
+    db.settlements.push(settlement)
+    await persist(db)
+    return settlement.id
+  })
+}
+
+export async function resolveSettlement(userId: string, settlementId: string, approve: boolean) {
+  return withDb(async (db) => {
+    const settlement = db.settlements.find((item) => item.id === settlementId)
+    if (!settlement) throw new AppError("Settlement not found")
+    if (settlement.toUserId !== userId) {
+      throw new AppError("Only the person being paid can approve or reject")
+    }
+    if (settlement.status !== "pending") throw new AppError("This settlement is already resolved")
+    settlement.status = approve ? "approved" : "rejected"
+    settlement.resolvedAt = new Date().toISOString()
+    await persist(db)
+  })
+}
+
+export async function cancelSettlement(userId: string, settlementId: string) {
+  return withDb(async (db) => {
+    const settlement = db.settlements.find((item) => item.id === settlementId)
+    if (!settlement) throw new AppError("Settlement not found")
+    if (settlement.createdBy !== userId && settlement.fromUserId !== userId) {
+      throw new AppError("Only the requester can cancel")
+    }
+    if (settlement.status !== "pending") throw new AppError("This settlement is already resolved")
+    db.settlements = db.settlements.filter((item) => item.id !== settlementId)
+    await persist(db)
+  })
+}
+
+export async function getActivity(userId: string) {
+  return withDb((db) => {
+    requireUser(db, userId)
+    const details = db.groups
+      .filter((group) => memberIds(db, group.id).includes(userId))
+      .map((group) => presentGroup(db, group.id, userId)!)
+    return buildActivity(userId, details, db.notices ?? [])
+  })
+}
+
+export async function getSummary(userId: string, groupId: string, monthStart: string): Promise<GroupSummary | null> {
+  return withDb((db) => {
+    const detail = presentGroup(db, groupId, userId)
+    if (!detail) return null
+    return buildSummary(userId, detail, monthStartISO(monthStart))
+  })
+}
+
+export function buildSummary(userId: string, detail: GroupDetail, monthStart: string): GroupSummary {
+  const buckets = new Map<string, { total: number; mine: number; categories: Map<string, number> }>()
+  for (const expense of detail.expenses) {
+    const start = monthStartISO(expense.expenseDate)
+    const bucket = buckets.get(start) ?? { total: 0, mine: 0, categories: new Map<string, number>() }
+    bucket.total += expense.amountPaise
+    bucket.mine += expense.shares
+      .filter((share) => share.userId === userId)
+      .reduce((sum, share) => sum + share.sharePaise, 0)
+    const category = expense.category ?? "other"
+    bucket.categories.set(category, (bucket.categories.get(category) ?? 0) + expense.amountPaise)
+    buckets.set(start, bucket)
+  }
+  if (!buckets.has(monthStart)) {
+    buckets.set(monthStart, { total: 0, mine: 0, categories: new Map() })
+  }
+  const months = [...buckets.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([start, bucket]) => ({
+      monthStart: start,
+      totalPaise: bucket.total,
+      mySharePaise: bucket.mine,
+      categories: [...bucket.categories.entries()]
+        .map(([category, totalPaise]) => ({ category, totalPaise }))
+        .sort((a, b) => b.totalPaise - a.totalPaise),
+    }))
+  const selected = months.find((month) => month.monthStart === monthStart) ?? months[0]
+  return {
+    group: { id: detail.id, name: detail.name, members: detail.members },
+    monthStart,
+    groupTotalPaise: selected.totalPaise,
+    mySharePaise: selected.mySharePaise,
+    myNetPaise: detail.myNetPaise,
+    debts: detail.debts,
+    months,
+  }
+}
+
+export function buildActivity(
+  userId: string,
+  details: GroupDetail[],
+  storedNotices: DemoNotice[] = [],
+) {
+  const feed: ActivityItem[] = []
+  for (const group of details) {
+    const nameOf = (id: string) => group.members.find((member) => member.id === id)?.displayName ?? "Someone"
+    for (const expense of group.expenses) {
+      const payer = nameOf(expense.payerId)
+      feed.push({
+        id: expense.id,
+        kind: "expense",
+        groupId: group.id,
+        groupName: group.name,
+        createdAt: expense.createdAt,
+        actorId: expense.payerId,
+        actorName: payer,
+        title: expense.description,
+        subtitle: `${payer} paid · ${group.name}`,
+        amountPaise: expense.amountPaise,
+      })
+    }
+    for (const settlement of group.settlements) {
+      const incoming = settlement.toUserId === userId
+      const outgoing = settlement.fromUserId === userId
+      feed.push({
+        id: settlement.id,
+        kind: "settlement",
+        groupId: group.id,
+        groupName: group.name,
+        createdAt: settlement.createdAt,
+        actorId: settlement.fromUserId,
+        actorName: nameOf(settlement.fromUserId),
+        title:
+          settlement.status === "pending"
+            ? `${nameOf(settlement.fromUserId)} recorded a payment`
+            : settlement.status === "approved"
+              ? "Payment confirmed"
+              : "Payment declined",
+        subtitle: `${nameOf(settlement.fromUserId)} to ${nameOf(settlement.toUserId)} · ${group.name}`,
+        amountPaise: settlement.amountPaise,
+        status: settlement.status,
+        settlementId: settlement.id,
+        direction: incoming ? "incoming" : outgoing ? "outgoing" : "other",
+      })
+    }
+  }
+  feed.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const pending = feed.filter(
+    (item) => item.kind === "settlement" && item.status === "pending" && item.direction === "incoming",
+  )
+  const notices: ShareNotice[] = []
+  for (const group of details) {
+    const nameOf = (id: string) => group.members.find((member) => member.id === id)?.displayName ?? "Someone"
+    for (const notice of storedNotices.filter((item) => item.groupId === group.id)) {
+      if (notice.userId !== userId) continue
+      const expense = group.expenses.find((item) => item.id === notice.expenseId)
+      notices.push({
+        id: notice.id,
+        expenseId: notice.expenseId,
+        groupId: group.id,
+        groupName: group.name,
+        actorId: notice.actorId,
+        actorName: nameOf(notice.actorId),
+        description: expense?.description ?? "an expense",
+        sharePaise: notice.sharePaise,
+        createdAt: notice.createdAt,
+        seen: Boolean(notice.seenAt),
+      })
+    }
+  }
+  notices.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return {
+    pending,
+    notices,
+    feed: feed.filter((item) => !pending.some((itemPending) => itemPending.id === item.id)),
+  }
+}

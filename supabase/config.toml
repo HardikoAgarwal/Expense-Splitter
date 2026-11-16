@@ -1,0 +1,10 @@
+# Hissa keeps public sign-up off. People get in only when an admin creates them.
+# `supabase db push` does not change Auth settings on a hosted project.
+# In the dashboard: Authentication → Sign In / Providers → Email → turn off
+# "Allow new users to sign up". For local `supabase start`, this file is the switch.
+
+project_id = "hissa"
+
+[auth]
+enable_signup = false
+enable_confirmations = false

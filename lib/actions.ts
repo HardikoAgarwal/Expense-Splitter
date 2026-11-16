@@ -52,6 +52,19 @@ export async function updateNameAction(displayName: string) {
   return run(() => queries.updateName(displayName))
 }
 
+export async function requestPasswordResetAction(email: string) {
+  try {
+    await queries.requestPasswordReset(email)
+    return { ok: true as const, data: undefined }
+  } catch (error) {
+    return { ok: false as const, error: errorMessage(error) }
+  }
+}
+
+export async function updatePasswordAction(password: string) {
+  return run(() => queries.updatePassword(password))
+}
+
 export async function createGroupAction(name: string) {
   return run(() => queries.createGroup(name))
 }

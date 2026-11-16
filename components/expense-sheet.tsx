@@ -45,7 +45,7 @@ export function ExpenseSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        className="h-[100dvh] max-h-[100dvh] gap-0 overflow-hidden rounded-none border-0 p-0 text-base"
+        className="h-[var(--vv-height,100dvh)] max-h-[var(--vv-height,100dvh)] gap-0 overflow-hidden rounded-none border-0 p-0 text-base md:inset-x-auto md:right-0 md:left-auto md:h-dvh md:max-h-dvh md:w-full md:max-w-lg md:rounded-l-[20px] md:border-l"
       >
         <div className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pr-12 pb-1">
           <SheetTitle className="text-lg font-semibold tracking-tight">

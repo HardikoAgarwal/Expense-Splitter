@@ -1,5 +1,7 @@
 import "server-only"
 
+import { cache } from "react"
+
 import * as demo from "@/lib/demo/db"
 import { isDemoMode } from "@/lib/env"
 import { clearDemoUserId, readDemoUserId, writeDemoUserId } from "@/lib/session"
@@ -7,12 +9,12 @@ import * as accounts from "@/lib/supabase/accounts"
 import * as remote from "@/lib/supabase/store"
 import type { SaveExpenseInput } from "@/lib/types"
 
-export async function getSessionUser() {
+export const getSessionUser = cache(async () => {
   if (!isDemoMode()) return remote.getSessionUser()
   const userId = await readDemoUserId()
   if (!userId) return null
   return demo.getUser(userId)
-}
+})
 
 async function actor() {
   const user = await getSessionUser()
@@ -81,12 +83,23 @@ export async function updateName(displayName: string) {
   return demo.updateName(user.id, displayName)
 }
 
-export async function listGroups() {
+export async function requestPasswordReset(email: string) {
+  if (!isDemoMode()) return remote.requestPasswordReset(email)
+  return demo.requestPasswordReset(email)
+}
+
+export async function updatePassword(password: string) {
+  if (!isDemoMode()) return remote.updatePassword(password)
+  const user = await actorOrThrow()
+  return demo.updatePassword(user.id, password)
+}
+
+export const listGroups = cache(async () => {
   if (!isDemoMode()) return remote.listGroups()
   const user = await actor()
   if (!user) return []
   return demo.listGroups(user.id)
-}
+})
 
 export async function createGroup(name: string) {
   if (!isDemoMode()) return remote.createGroup(name)
@@ -95,12 +108,12 @@ export async function createGroup(name: string) {
   return demo.createGroup(user.id, name)
 }
 
-export async function getGroup(groupId: string) {
+export const getGroup = cache(async (groupId: string) => {
   if (!isDemoMode()) return remote.getGroup(groupId)
   const user = await actor()
   if (!user) return null
   return demo.getGroup(user.id, groupId)
-}
+})
 
 export async function createInvite(groupId: string) {
   if (!isDemoMode()) return remote.createInvite(groupId)
@@ -223,12 +236,12 @@ export async function cancelSettlement(settlementId: string) {
   return demo.cancelSettlement(user.id, settlementId)
 }
 
-export async function getActivity() {
+export const getActivity = cache(async () => {
   if (!isDemoMode()) return remote.getActivity()
   const user = await actor()
   if (!user) return { pending: [], notices: [], feed: [] }
   return demo.getActivity(user.id)
-}
+})
 
 export async function getSummary(groupId: string, monthStart: string) {
   if (!isDemoMode()) return remote.getSummary(groupId, monthStart)

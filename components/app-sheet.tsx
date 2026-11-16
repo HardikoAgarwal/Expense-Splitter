@@ -1,6 +1,14 @@
 "use client"
 
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { cn } from "@/lib/utils"
 
 export function AppSheet({
   open,
@@ -20,31 +28,31 @@ export function AppSheet({
   tall?: boolean
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className={
-          tall
-            ? "h-[100dvh] max-h-[100dvh] gap-0 overflow-hidden rounded-none border-0 p-0"
-            : "max-h-[92dvh] gap-0 overflow-hidden rounded-t-[16px] border-0 p-0"
-        }
-      >
-        {tall ? null : <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-muted" />}
-        <SheetHeader className={tall ? "px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pr-12 pb-2" : "px-4 pt-3 pr-12 pb-2"}>
-          <SheetTitle className="text-lg font-semibold tracking-tight">{title}</SheetTitle>
-          {description ? (
-            <SheetDescription>{description}</SheetDescription>
-          ) : (
-            <SheetDescription className="sr-only">{title}</SheetDescription>
-          )}
-        </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4">{children}</div>
-        {footer ? (
-          <div className="shrink-0 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">{footer}</div>
-        ) : (
-          <div className="h-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          "flex w-[calc(100%-1.5rem)] max-w-md flex-col gap-0 overflow-hidden rounded-[20px] p-0 ring-1 ring-border",
+          "top-[calc(var(--vv-offset-top,0px)+var(--vv-height,100dvh)/2)] max-h-[calc(var(--vv-height,100dvh)-1.5rem)]",
+          tall && "max-h-[calc(var(--vv-height,100dvh)-1rem)] sm:max-w-lg",
         )}
-      </SheetContent>
-    </Sheet>
+      >
+        <DialogHeader className="shrink-0 space-y-1 px-4 pt-4 pr-12 pb-2 text-left">
+          <DialogTitle className="text-lg font-semibold tracking-tight">{title}</DialogTitle>
+          {description ? (
+            <DialogDescription>{description}</DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">{title}</DialogDescription>
+          )}
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-1">{children}</div>
+        {footer ? (
+          <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-t bg-transparent p-4 sm:flex-col">
+            {footer}
+          </DialogFooter>
+        ) : (
+          <div className="h-4 shrink-0" />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

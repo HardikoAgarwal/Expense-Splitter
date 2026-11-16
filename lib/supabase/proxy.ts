@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-const PUBLIC_PREFIXES = ["/login", "/join", "/welcome"]
+const PUBLIC_PREFIXES = ["/login", "/join", "/welcome", "/forgot-password", "/reset-password"]
 
 function isPublic(pathname: string) {
   return pathname === "/" || PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
@@ -31,9 +31,24 @@ export async function updateSupabaseSession(request: NextRequest) {
     },
   )
 
+  const code = request.nextUrl.searchParams.get("code")
+  if (code) {
+    await supabase.auth.exchangeCodeForSession(code)
+  }
+
   const { data } = await supabase.auth.getUser()
   const user = data.user
   const { pathname } = request.nextUrl
+
+  if (code) {
+    const url = request.nextUrl.clone()
+    url.searchParams.delete("code")
+    const redirect = NextResponse.redirect(url)
+    for (const cookie of response.cookies.getAll()) {
+      redirect.cookies.set(cookie.name, cookie.value)
+    }
+    return redirect
+  }
 
   if (!user && !isPublic(pathname)) {
     const url = request.nextUrl.clone()
@@ -48,7 +63,7 @@ export async function updateSupabaseSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && pathname === "/login") {
+  if (user && (pathname === "/login" || pathname === "/forgot-password")) {
     return NextResponse.redirect(new URL("/groups", request.url))
   }
 
@@ -67,7 +82,7 @@ export function updateDemoSession(request: NextRequest) {
     url.searchParams.set("next", pathname)
     return NextResponse.redirect(url)
   }
-  if (signedIn && (pathname === "/login" || pathname === "/signup")) {
+  if (signedIn && (pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password")) {
     const next = request.nextUrl.searchParams.get("next")
     if (next && next.startsWith("/") && !next.startsWith("//")) {
       return NextResponse.redirect(new URL(next, request.url))

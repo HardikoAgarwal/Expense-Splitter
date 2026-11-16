@@ -11,13 +11,16 @@ import { Person } from "@/components/person"
 import { Section } from "@/components/section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { signOutAction, updateNameAction } from "@/lib/actions"
+import { signOutAction, updateNameAction, updatePasswordAction } from "@/lib/actions"
 import type { SessionUser } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function AccountScreen({ user }: { user: SessionUser }) {
   const [name, setName] = useState(user.displayName)
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
   const [saving, setSaving] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
   const { theme, setTheme } = useTheme()
   const router = useRouter()
 
@@ -32,6 +35,24 @@ export function AccountScreen({ user }: { user: SessionUser }) {
     }
     toast.success("Name updated")
     router.refresh()
+  }
+
+  async function savePassword(event: React.FormEvent) {
+    event.preventDefault()
+    if (password !== confirm) {
+      toast.error("Passwords do not match")
+      return
+    }
+    setSavingPassword(true)
+    const result = await updatePasswordAction(password)
+    setSavingPassword(false)
+    if (!result.ok) {
+      toast.error(result.error)
+      return
+    }
+    setPassword("")
+    setConfirm("")
+    toast.success("Password updated")
   }
 
   async function signOut() {
@@ -75,6 +96,35 @@ export function AccountScreen({ user }: { user: SessionUser }) {
         </label>
         <Button type="submit" size="lg" className="w-full" disabled={saving || name.trim() === user.displayName}>
           {saving ? "Saving…" : "Save name"}
+        </Button>
+      </form>
+
+      <form onSubmit={(event) => void savePassword(event)} className="mt-6 space-y-3">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Password</p>
+        <Input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="New password"
+          autoComplete="new-password"
+          className="h-12 rounded-[12px] px-3.5 text-base"
+        />
+        <Input
+          type="password"
+          value={confirm}
+          onChange={(event) => setConfirm(event.target.value)}
+          placeholder="Confirm password"
+          autoComplete="new-password"
+          className="h-12 rounded-[12px] px-3.5 text-base"
+        />
+        <Button
+          type="submit"
+          size="lg"
+          variant="outline"
+          className="w-full"
+          disabled={savingPassword || password.length < 8}
+        >
+          {savingPassword ? "Saving…" : "Update password"}
         </Button>
       </form>
 

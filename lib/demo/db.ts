@@ -515,6 +515,21 @@ export async function updateName(userId: string, displayName: string): Promise<S
   })
 }
 
+export async function updatePassword(userId: string, password: string) {
+  return withDb(async (db) => {
+    const user = requireUser(db, userId)
+    if (password.length < 8) throw new AppError("Use at least 8 characters")
+    const { hash, salt } = hashPassword(password)
+    user.passwordHash = hash
+    user.passwordSalt = salt
+    await persist(db)
+  })
+}
+
+export async function requestPasswordReset(_email: string) {
+  throw new AppError("Email reset is unavailable in demo mode. Sign in, then change your password from Account.")
+}
+
 export async function listGroups(userId: string): Promise<GroupCard[]> {
   return withDb((db) => {
     requireUser(db, userId)

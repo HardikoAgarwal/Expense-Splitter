@@ -95,7 +95,7 @@ npm run build
 
 1. Push the repository and import it on [Vercel](https://vercel.com). The free tier is enough.
 2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the project settings. Do not add the service role key unless you run the seed from your own machine.
-3. In Supabase → Authentication → URL configuration, add your Vercel URL to Site URL and Redirect URLs.
+3. In Supabase → Authentication → URL configuration, add your Vercel URL to Site URL and Redirect URLs (include `/reset-password` for password recovery).
 4. Deploy. `npm run build` is the production build.
 
 The app is a PWA: `app/manifest.ts`, icons in `public/icons`, and a network-only service worker registered in production so the ledger is never cached on a shared phone.

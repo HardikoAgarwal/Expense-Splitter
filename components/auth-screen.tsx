@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -35,7 +36,7 @@ export function AuthScreen({ next, demo }: { next: string; demo: boolean }) {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:max-w-lg">
       <div className="pt-[max(1.25rem,env(safe-area-inset-top))] pb-2">
         <Mark className="size-12" />
         <h1 className="mt-5 text-[2.4rem] leading-none font-semibold tracking-tight">Hissa</h1>
@@ -63,6 +64,9 @@ export function AuthScreen({ next, demo }: { next: string; demo: boolean }) {
         <Button type="submit" size="xl" className="w-full" disabled={pending}>
           {pending ? "Please wait…" : "Sign in"}
         </Button>
+        <Link href="/forgot-password" className="block text-center text-sm font-medium text-primary">
+          Forgot password?
+        </Link>
       </form>
 
       {demo ? (

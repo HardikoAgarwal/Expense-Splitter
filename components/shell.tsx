@@ -6,9 +6,9 @@ import { usePathname } from "next/navigation"
 import { BellIcon, PlusIcon, UserRoundIcon, UsersIcon } from "lucide-react"
 import { toast } from "sonner"
 
+import { AppSheet } from "@/components/app-sheet"
 import { ExpenseSheet } from "@/components/expense-sheet"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { loadGroupAction } from "@/lib/actions"
 import type { Expense, GroupCard, GroupDetail, SessionUser } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -71,32 +71,59 @@ export function Shell({
 
   return (
     <ExpenseContext.Provider value={{ openExpense }}>
-      <div className="relative flex h-dvh flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))]">
-          {children}
+      <div className="relative flex h-dvh flex-col md:flex-row">
+        <aside className="hidden w-56 shrink-0 flex-col border-r bg-background/95 px-3 py-5 backdrop-blur-xl md:flex lg:w-64">
+          <p className="px-3 text-sm font-semibold tracking-[0.18em] text-primary uppercase">Hissa</p>
+          <nav className="mt-6 flex flex-1 flex-col gap-1">
+            <SideNavItem href="/groups" label="Groups" active={pathname.startsWith("/groups")}>
+              <UsersIcon />
+            </SideNavItem>
+            <SideNavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
+              <BellIcon />
+            </SideNavItem>
+            <SideNavItem href="/account" label="Account" active={pathname.startsWith("/account")}>
+              <UserRoundIcon />
+            </SideNavItem>
+          </nav>
+          {hideFab ? null : (
+            <Button className="mt-auto h-11 w-full rounded-[12px]" onClick={() => void openExpense()}>
+              <PlusIcon className="size-4" />
+              Add expense
+            </Button>
+          )}
+          <p className="mt-3 truncate px-1 text-xs text-muted-foreground">{user.displayName}</p>
+        </aside>
+
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-8">
+            <div className="mx-auto w-full max-w-3xl md:px-2 lg:max-w-4xl">{children}</div>
+          </div>
+
+          <nav className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-3 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
+            <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups")}>
+              <UsersIcon />
+            </NavItem>
+            <NavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
+              <BellIcon />
+            </NavItem>
+            <NavItem href="/account" label="Account" active={pathname.startsWith("/account")}>
+              <UserRoundIcon />
+            </NavItem>
+          </nav>
+
+          {hideFab ? null : (
+            <button
+              type="button"
+              onClick={() => void openExpense()}
+              className="absolute right-4 bottom-[calc(var(--bottom-nav-height)+0.5rem+env(safe-area-inset-bottom))] z-30 flex size-[var(--fab-size)] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_-8px_rgba(31,107,74,0.8)] transition active:scale-95 md:hidden"
+            >
+              <PlusIcon className="size-7" />
+              <span className="sr-only">Add expense</span>
+            </button>
+          )}
         </div>
-        <nav className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-3 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
-          <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups")}>
-            <UsersIcon />
-          </NavItem>
-          <NavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
-            <BellIcon />
-          </NavItem>
-          <NavItem href="/account" label="Account" active={pathname.startsWith("/account")}>
-            <UserRoundIcon />
-          </NavItem>
-        </nav>
-        {hideFab ? null : (
-          <button
-            type="button"
-            onClick={() => void openExpense()}
-            className="absolute right-4 bottom-[calc(var(--bottom-nav-height)+0.5rem+env(safe-area-inset-bottom))] z-30 flex size-[var(--fab-size)] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_12px_30px_-8px_rgba(31,107,74,0.8)] transition active:scale-95"
-          >
-            <PlusIcon className="size-7" />
-            <span className="sr-only">Add expense</span>
-          </button>
-        )}
       </div>
+
       <ExpenseSheet
         open={open}
         loading={loading}
@@ -108,35 +135,63 @@ export function Shell({
           if (!next) setExpense(null)
         }}
       />
-      <Sheet open={picker} onOpenChange={setPicker}>
-        <SheetContent side="bottom" className="rounded-t-[28px] p-0">
-          <div className="mx-auto mt-2.5 h-1.5 w-11 rounded-full bg-muted" />
-          <SheetHeader>
-            <SheetTitle>Add to which group?</SheetTitle>
-            <SheetDescription>Pick a home, then enter the expense.</SheetDescription>
-          </SheetHeader>
-          <div className="space-y-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {groups.length === 0 ? (
-              <p className="px-1 py-6 text-sm text-muted-foreground">Create a group first, then add an expense.</p>
-            ) : (
-              groups.map((group) => (
-                <Button
-                  key={group.id}
-                  variant="outline"
-                  className="h-12 w-full justify-start rounded-[12px] px-4 text-base"
-                  onClick={() => {
-                    setPicker(false)
-                    void openExpense(group.id)
-                  }}
-                >
-                  {group.name}
-                </Button>
-              ))
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+
+      <AppSheet open={picker} onOpenChange={setPicker} title="Add to which group?" description="Pick a home, then enter the expense.">
+        <div className="space-y-2 pb-2">
+          {groups.length === 0 ? (
+            <p className="px-1 py-6 text-sm text-muted-foreground">Create a group first, then add an expense.</p>
+          ) : (
+            groups.map((group) => (
+              <Button
+                key={group.id}
+                variant="outline"
+                className="h-12 w-full justify-start rounded-[12px] px-4 text-base"
+                onClick={() => {
+                  setPicker(false)
+                  void openExpense(group.id)
+                }}
+              >
+                {group.name}
+              </Button>
+            ))
+          )}
+        </div>
+      </AppSheet>
     </ExpenseContext.Provider>
+  )
+}
+
+function SideNavItem({
+  href,
+  label,
+  active,
+  badge,
+  children,
+}: {
+  href: string
+  label: string
+  active: boolean
+  badge?: number
+  children: React.ReactNode
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "relative flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm font-medium transition",
+        active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <span className="relative [&_svg]:size-[18px]">
+        {children}
+        {badge ? (
+          <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-negative px-1 text-[10px] font-semibold text-white">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      {label}
+    </Link>
   )
 }
 

@@ -75,6 +75,9 @@
   --ring: oklch(0.42 0.09 155);
   --bottom-nav-height: 4rem;
   --fab-size: 3.5rem;
+  --vv-height: 100dvh;
+  --vv-offset-top: 0px;
+  --keyboard-inset: 0px;
   --positive: oklch(0.4 0.12 155);
   --negative: oklch(0.48 0.17 28);
   --warning: oklch(0.62 0.12 75);

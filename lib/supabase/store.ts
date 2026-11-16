@@ -120,6 +120,22 @@ export async function signOut() {
   fail(error)
 }
 
+export async function requestPasswordReset(email: string) {
+  const supabase = await client()
+  const redirectTo = `${(process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "") || "http://localhost:3847"}/reset-password`
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo })
+  fail(error, "Could not send a reset email")
+}
+
+export async function updatePassword(password: string) {
+  if (password.length < 8) throw new AppError("Use at least 8 characters")
+  const supabase = await client()
+  const { data } = await supabase.auth.getUser()
+  if (!data.user) throw new AppError("Open the reset link from your email, then try again")
+  const { error } = await supabase.auth.updateUser({ password })
+  fail(error, "Could not update password")
+}
+
 export async function updateName(displayName: string): Promise<SessionUser> {
   const name = displayName.trim()
   if (name.length < 2 || name.length > 40) throw new AppError("Name must be 2–40 characters")
@@ -140,48 +156,49 @@ async function requireUser() {
 export async function listGroups(): Promise<GroupCard[]> {
   const user = await requireUser()
   const supabase = await client()
-  const { data: memberships, error } = await supabase
-    .from("group_members")
-    .select("group_id, user_id, role, groups(id, name), profiles(id, display_name, email)")
+  const [
+    { data: memberships, error },
+    { data: pendingRows, error: pendingError },
+    { data: openFlags, error: flagError },
+  ] = await Promise.all([
+    supabase.from("group_members").select("group_id, user_id, role, groups(id, name), profiles(id, display_name, email)"),
+    supabase.from("settlements").select("group_id").eq("to_user_id", user.id).eq("status", "pending"),
+    supabase.from("expense_flags").select("expense_id, expenses(group_id)").is("resolved_at", null),
+  ])
   fail(error)
+  fail(pendingError)
+  fail(flagError)
   const rows = memberships ?? []
   const groupIds = [...new Set(rows.map((row) => row.group_id as string))]
 
-  const { data: pendingRows, error: pendingError } = await supabase
-    .from("settlements")
-    .select("group_id")
-    .eq("to_user_id", user.id)
-    .eq("status", "pending")
-  fail(pendingError)
+  const balanceResults = await Promise.all(
+    groupIds.map(async (groupId) => {
+      const { data: balances, error: balanceError } = await supabase.rpc("group_balances", {
+        p_group_id: groupId,
+      })
+      fail(balanceError)
+      return [groupId, (balances ?? []) as { user_id: string; net_paise: number | string }[]] as const
+    }),
+  )
+  const balancesByGroup = new Map(balanceResults)
 
-  const { data: openFlags, error: flagError } = await supabase
-    .from("expense_flags")
-    .select("expense_id, expenses(group_id)")
-    .is("resolved_at", null)
-  fail(flagError)
-
-  const cards: GroupCard[] = []
-  for (const groupId of groupIds) {
-    const { data: balances, error: balanceError } = await supabase.rpc("group_balances", {
-      p_group_id: groupId,
-    })
-    fail(balanceError)
-    const balanceList = (balances ?? []) as { user_id: string; net_paise: number | string }[]
+  const cards: GroupCard[] = groupIds.map((groupId) => {
+    const balanceList = balancesByGroup.get(groupId) ?? []
     const mine = balanceList.find((balance) => balance.user_id === user.id)
     const members = rows
       .filter((row) => row.group_id === groupId)
       .map((row) => toMember(row))
       .sort((a, b) => a.displayName.localeCompare(b.displayName))
     const group = asOne(rows.find((row) => row.group_id === groupId)?.groups as GroupEmbed | GroupEmbed[])
-    cards.push({
+    return {
       id: groupId,
       name: group?.name ?? "Group",
       members,
       myNetPaise: num(mine?.net_paise),
       pendingForMe: (pendingRows ?? []).filter((row) => row.group_id === groupId).length,
       disputedCount: (openFlags ?? []).filter((row) => embeddedGroupId(row.expenses) === groupId).length,
-    })
-  }
+    }
+  })
   return cards.sort((a, b) => a.name.localeCompare(b.name))
 }
 
@@ -217,40 +234,31 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
   fail(error)
   if (!group) return null
 
-  const { data: memberRows, error: memberError } = await supabase
-    .from("group_members")
-    .select("user_id, role, profiles(id, display_name, email)")
-    .eq("group_id", groupId)
+  const [
+    { data: memberRows, error: memberError },
+    { data: expenseRows, error: expenseError },
+    { data: flagRows, error: openFlagError },
+    { data: settlementRows, error: settlementError },
+    { data: balanceRows, error: balanceError },
+    { data: debtRows, error: debtError },
+  ] = await Promise.all([
+    supabase.from("group_members").select("user_id, role, profiles(id, display_name, email)").eq("group_id", groupId),
+    supabase
+      .from("expenses")
+      .select(
+        "id, group_id, description, amount_paise, payer_id, expense_date, category, created_by, created_at, updated_at, expense_shares(user_id, share_paise)",
+      )
+      .eq("group_id", groupId),
+    supabase.from("expense_flags").select("id, expense_id, user_id, reason, created_at").is("resolved_at", null),
+    supabase.from("settlements").select("*").eq("group_id", groupId).order("created_at", { ascending: false }),
+    supabase.rpc("group_balances", { p_group_id: groupId }),
+    supabase.rpc("simplified_debts", { p_group_id: groupId }),
+  ])
   fail(memberError)
-
-  const { data: expenseRows, error: expenseError } = await supabase
-    .from("expenses")
-    .select(
-      "id, group_id, description, amount_paise, payer_id, expense_date, category, created_by, created_at, updated_at, expense_shares(user_id, share_paise)",
-    )
-    .eq("group_id", groupId)
   fail(expenseError)
-
-  const { data: flagRows, error: openFlagError } = await supabase
-    .from("expense_flags")
-    .select("id, expense_id, user_id, reason, created_at")
-    .is("resolved_at", null)
   fail(openFlagError)
-
-  const { data: settlementRows, error: settlementError } = await supabase
-    .from("settlements")
-    .select("*")
-    .eq("group_id", groupId)
-    .order("created_at", { ascending: false })
   fail(settlementError)
-
-  const { data: balanceRows, error: balanceError } = await supabase.rpc("group_balances", {
-    p_group_id: groupId,
-  })
   fail(balanceError)
-  const { data: debtRows, error: debtError } = await supabase.rpc("simplified_debts", {
-    p_group_id: groupId,
-  })
   fail(debtError)
 
   const settlements: Settlement[] = (settlementRows ?? []).map(toSettlement)
@@ -576,18 +584,23 @@ export async function getSummary(groupId: string, monthStart: string): Promise<G
 export async function getActivity() {
   const user = await requireUser()
   const supabase = await client()
-  const { data: expenseRows, error } = await supabase
-    .from("expenses")
-    .select("id, group_id, description, amount_paise, payer_id, created_at, groups(name)")
+  const [
+    { data: expenseRows, error },
+    { data: settlementRows, error: settlementError },
+    { data: profiles, error: profileError },
+    { data: noticeRows, error: noticeError },
+  ] = await Promise.all([
+    supabase.from("expenses").select("id, group_id, description, amount_paise, payer_id, created_at, groups(name)"),
+    supabase.from("settlements").select("*, groups(name)"),
+    supabase.from("profiles").select("id, display_name"),
+    supabase
+      .from("share_notices")
+      .select("id, expense_id, group_id, actor_id, share_paise, created_at, seen_at, expenses(description), groups(name)")
+      .eq("user_id", user.id),
+  ])
   fail(error)
-  const { data: settlementRows, error: settlementError } = await supabase.from("settlements").select("*, groups(name)")
   fail(settlementError)
-  const { data: profiles, error: profileError } = await supabase.from("profiles").select("id, display_name")
   fail(profileError)
-  const { data: noticeRows, error: noticeError } = await supabase
-    .from("share_notices")
-    .select("id, expense_id, group_id, actor_id, share_paise, created_at, seen_at, expenses(description), groups(name)")
-    .eq("user_id", user.id)
   fail(noticeError)
   const nameOf = (id: string) => profiles?.find((profile) => profile.id === id)?.display_name ?? "Someone"
 

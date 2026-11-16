@@ -44,9 +44,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning className={`${outfit.variable} ${fraunces.variable} h-full`}>
       <body className="min-h-dvh antialiased">
         <Providers>
-          <div className="relative mx-auto min-h-dvh w-full max-w-[480px] overflow-x-hidden bg-background md:shadow-[0_0_0_1px_var(--border)]">
-            <div className="top-wash" aria-hidden />
-            <div className="relative z-10">{children}</div>
+          <div className="relative min-h-dvh w-full overflow-x-hidden bg-canvas">
+            <div className="relative mx-auto min-h-dvh w-full max-w-6xl overflow-x-hidden bg-background md:shadow-[0_0_0_1px_var(--border)]">
+              <div className="top-wash" aria-hidden />
+              <div className="relative z-10">{children}</div>
+            </div>
           </div>
           <PwaRegister />
         </Providers>

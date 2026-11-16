@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { CheckIcon, ChevronRightIcon, LockIcon } from "lucide-react"
+import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, LockIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { CategoryIcon } from "@/components/category-icon"
@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { deleteExpenseAction, saveExpenseAction } from "@/lib/actions"
 import { CATEGORIES } from "@/lib/categories"
@@ -42,24 +41,28 @@ export function ExpenseSheet({
   userId: string
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[var(--vv-height,100dvh)] max-h-[var(--vv-height,100dvh)] gap-0 overflow-hidden rounded-none border-0 p-0 text-base md:inset-x-auto md:right-0 md:left-auto md:h-dvh md:max-h-dvh md:w-full md:max-w-lg md:rounded-l-[20px] md:border-l"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          "flex w-[calc(100%-1.5rem)] max-w-md flex-col gap-0 overflow-hidden rounded-[20px] p-0 ring-1 ring-border sm:max-w-lg",
+          "top-[calc(var(--vv-offset-top,0px)+var(--vv-height,100dvh)/2)] max-h-[calc(var(--vv-height,100dvh)-1.5rem)]",
+        )}
       >
-        <div className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pr-12 pb-1">
-          <SheetTitle className="text-lg font-semibold tracking-tight">
-            {expense ? "Edit expense" : "Add expense"}
-          </SheetTitle>
-          <SheetDescription className="sr-only">{group ? group.name : "Loading the group"}</SheetDescription>
-        </div>
         {loading || !group ? (
-          <div className="space-y-3 px-5 py-4">
-            <Skeleton className="h-16 w-40" />
-            <Skeleton className="h-12 w-full rounded-[12px]" />
-            <Skeleton className="h-12 w-full rounded-[12px]" />
-            <Skeleton className="h-24 w-full rounded-[12px]" />
-          </div>
+          <>
+            <DialogHeader className="shrink-0 space-y-1 px-4 pt-4 pr-12 pb-2 text-left">
+              <DialogTitle className="text-lg font-semibold tracking-tight">
+                {expense ? "Edit expense" : "Add expense"}
+              </DialogTitle>
+              <DialogDescription className="sr-only">Loading the group</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 px-4 py-4">
+              <Skeleton className="h-16 w-40" />
+              <Skeleton className="h-12 w-full rounded-[12px]" />
+              <Skeleton className="h-12 w-full rounded-[12px]" />
+              <Skeleton className="h-24 w-full rounded-[12px]" />
+            </div>
+          </>
         ) : (
           <ExpenseForm
             key={`${group.id}:${expense?.id ?? "new"}:${expense?.updatedAt ?? ""}`}
@@ -69,8 +72,8 @@ export function ExpenseSheet({
             onDone={() => onOpenChange(false)}
           />
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -102,7 +105,6 @@ function ExpenseForm({
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [step, setStep] = useState<"main" | "split">("main")
-  const [more, setMore] = useState(Boolean(expense?.category))
 
   const totalPaise = amount.trim() ? rupeesToPaise(amount) : null
   const shares = buildShares(mode, selected, custom, totalPaise)
@@ -160,18 +162,18 @@ function ExpenseForm({
     router.refresh()
   }
 
-  function fillRest(userId: string) {
+  function fillRest(memberId: string) {
     if (totalPaise === null) return
     let others = 0
     for (const member of group.members) {
-      if (member.id === userId) continue
+      if (member.id === memberId) continue
       const parsed = custom[member.id]?.trim() ? rupeesToPaise(custom[member.id]) : 0
       if (parsed === null) return
       others += parsed
     }
     const rest = totalPaise - others
     if (rest < 0) return
-    setCustom((current) => ({ ...current, [userId]: paiseToInput(rest) }))
+    setCustom((current) => ({ ...current, [memberId]: paiseToInput(rest) }))
   }
 
   const splitSummary =
@@ -201,7 +203,33 @@ function ExpenseForm({
         void save()
       }}
     >
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pt-2 pb-4">
+      <DialogHeader className="shrink-0 space-y-1 px-4 pt-4 pr-12 pb-2 text-left">
+        {step === "split" ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setStep("main")}
+              className="flex size-9 items-center justify-center rounded-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Back to expense details"
+            >
+              <ArrowLeftIcon className="size-5" />
+            </button>
+            <div className="min-w-0">
+              <DialogTitle className="text-lg font-semibold tracking-tight">Split</DialogTitle>
+              <DialogDescription>Who owes what for this expense.</DialogDescription>
+            </div>
+          </div>
+        ) : (
+          <>
+            <DialogTitle className="text-lg font-semibold tracking-tight">
+              {expense ? "Edit expense" : "Add expense"}
+            </DialogTitle>
+            <DialogDescription>{group.name}</DialogDescription>
+          </>
+        )}
+      </DialogHeader>
+
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 pt-1 pb-3">
         {step === "split" ? (
           <SplitStep
             group={group}
@@ -279,6 +307,29 @@ function ExpenseForm({
               </Field>
             </div>
 
+            <Field label="Category">
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {CATEGORIES.map((item) => {
+                  const active = category === item.id
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={locked}
+                      onClick={() => setCategory(active ? null : item.id)}
+                      className={cn(
+                        "flex h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-medium",
+                        active ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <CategoryIcon category={item.id} className="size-6 rounded-full" />
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </Field>
+
             <button
               type="button"
               disabled={locked}
@@ -293,62 +344,32 @@ function ExpenseForm({
               </span>
               <ChevronRightIcon className="size-5 text-muted-foreground" />
             </button>
-
-            <div>
-              <button
-                type="button"
-                className="text-sm font-medium text-muted-foreground"
-                onClick={() => setMore((value) => !value)}
-              >
-                {more ? "Hide options" : "More options"}
-              </button>
-              {more ? (
-                <div className="mt-3 space-y-4">
-                  <div className="flex gap-2 overflow-x-auto">
-                    {CATEGORIES.map((item) => {
-                      const active = category === item.id
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          disabled={locked}
-                          onClick={() => setCategory(active ? null : item.id)}
-                          className={cn(
-                            "flex h-10 shrink-0 items-center gap-2 rounded-full px-3 text-sm font-medium",
-                            active ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground",
-                          )}
-                        >
-                          <CategoryIcon category={item.id} className="size-6 rounded-full" />
-                          {item.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {expense && !locked ? (
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-negative"
-                      onClick={() => setConfirmDelete(true)}
-                    >
-                      Delete expense
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
           </>
         )}
       </div>
 
-      <div className="bg-popover px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 space-y-2 border-t px-4 pt-3 pb-4">
         {step === "split" ? (
           <Button type="button" size="xl" className="w-full" onClick={() => setStep("main")}>
-            Done
+            Back to expense
           </Button>
         ) : (
-          <Button type="submit" size="xl" className="w-full" disabled={!canSave}>
-            {saving ? "Saving…" : expense ? "Save changes" : "Save expense"}
-          </Button>
+          <>
+            <Button type="submit" size="xl" className="w-full" disabled={!canSave}>
+              {saving ? "Saving…" : expense ? "Save changes" : "Save expense"}
+            </Button>
+            {expense && !locked ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full text-negative hover:text-negative"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete expense
+              </Button>
+            ) : null}
+          </>
         )}
       </div>
 
@@ -405,7 +426,6 @@ function SplitStep({
 }) {
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold tracking-tight">Split</h2>
       <div className="grid grid-cols-2 rounded-[12px] bg-muted p-1">
         {(["equal", "custom"] as const).map((value) => (
           <button
@@ -498,7 +518,13 @@ function SplitStep({
           ))}
       {mode === "custom" ? (
         <p className={cn("text-sm font-medium", remaining === 0 ? "text-positive" : "text-negative")}>
-          {remaining === null ? "Enter the total first" : remaining === 0 ? "Balanced" : remaining > 0 ? `${formatINR(remaining)} left` : `${formatINR(Math.abs(remaining))} over`}
+          {remaining === null
+            ? "Enter the total first"
+            : remaining === 0
+              ? "Balanced"
+              : remaining > 0
+                ? `${formatINR(remaining)} left`
+                : `${formatINR(Math.abs(remaining))} over`}
         </p>
       ) : null}
     </div>
@@ -533,14 +559,14 @@ function buildShares(
     }
   }
   const shares: Share[] = []
-  for (const [userId, value] of Object.entries(custom)) {
+  for (const [id, value] of Object.entries(custom)) {
     if (!value.trim()) {
-      shares.push({ userId, sharePaise: 0 })
+      shares.push({ userId: id, sharePaise: 0 })
       continue
     }
     const paise = rupeesToPaise(value)
     if (paise === null) return null
-    shares.push({ userId, sharePaise: paise })
+    shares.push({ userId: id, sharePaise: paise })
   }
   return shares.filter((share) => share.sharePaise > 0)
 }

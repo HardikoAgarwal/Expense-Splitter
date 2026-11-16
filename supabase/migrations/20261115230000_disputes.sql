@@ -105,11 +105,11 @@ begin
 
   for share in select value from jsonb_array_elements(p_shares)
   loop
-    if (share.value ->> 'user_id') !~* '^[0-9a-f-]{36}$' or (share.value ->> 'share_paise') !~ '^[0-9]+$' then
+    if (share ->> 'user_id') !~* '^[0-9a-f-]{36}$' or (share ->> 'share_paise') !~ '^[0-9]+$' then
       raise exception 'Each share must be zero or more';
     end if;
-    uid := (share.value ->> 'user_id')::uuid;
-    sp := (share.value ->> 'share_paise')::bigint;
+    uid := (share ->> 'user_id')::uuid;
+    sp := (share ->> 'share_paise')::bigint;
     if not public.is_group_member(p_group_id, uid) then
       raise exception 'Every share must belong to someone in the group';
     end if;
@@ -176,8 +176,8 @@ begin
     select value from jsonb_array_elements(p_shares)
     where (value ->> 'share_paise')::bigint > 0
   loop
-    uid := (share.value ->> 'user_id')::uuid;
-    sp := (share.value ->> 'share_paise')::bigint;
+    uid := (share ->> 'user_id')::uuid;
+    sp := (share ->> 'share_paise')::bigint;
     if uid = me then
       continue;
     end if;

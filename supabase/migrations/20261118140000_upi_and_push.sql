@@ -12,7 +12,7 @@ alter table public.profiles
 
 alter table public.profiles
   add constraint profiles_upi_id_format
-  check (upi_id is null or upi_id ~ '^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9]{1,63}$');
+  check (upi_id is null or upi_id ~ '^[A-Za-z0-9._-]{2,255}@[A-Za-z][A-Za-z0-9]{1,63}$');
 
 -- ---------------------------------------------------------------------------
 -- Push subscriptions: one row per browser/device. Users manage their own rows;

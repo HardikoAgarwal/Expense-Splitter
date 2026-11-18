@@ -1,6 +1,6 @@
 /** UPI helpers. Pure, so they run on both server and client and are easy to test. */
 
-const UPI_PATTERN = /^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9]{1,63}$/
+const UPI_PATTERN = /^[A-Za-z0-9._-]{2,255}@[A-Za-z][A-Za-z0-9]{1,63}$/
 
 /** Trims and lowercases a UPI ID. Empty input becomes null (no UPI ID). */
 export function normalizeUpi(input: string | null | undefined): string | null {

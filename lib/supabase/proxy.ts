@@ -36,8 +36,10 @@ export async function updateSupabaseSession(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  const { data } = await supabase.auth.getUser()
-  const user = data.user
+  // getClaims refreshes an expired session and verifies the JWT. With asymmetric
+  // signing keys it does that locally, so most requests skip the Auth round trip.
+  const { data } = await supabase.auth.getClaims()
+  const user = data?.claims?.sub ? { id: data.claims.sub } : null
   const { pathname } = request.nextUrl
 
   if (code) {

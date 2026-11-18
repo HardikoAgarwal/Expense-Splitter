@@ -4,8 +4,11 @@ import { ActivityScreen } from "@/components/activity-screen"
 import { getActivity, getSessionUser } from "@/lib/queries"
 
 export default async function ActivityPage() {
-  const user = await getSessionUser()
+  const [user, activity] = await Promise.all([getSessionUser(), getActivity()])
   if (!user) redirect("/login")
-  const activity = await getActivity()
-  return <ActivityScreen pending={activity.pending} notices={activity.notices} feed={activity.feed} />
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <ActivityScreen pending={activity.pending} notices={activity.notices} feed={activity.feed} />
+    </div>
+  )
 }

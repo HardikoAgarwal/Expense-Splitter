@@ -1,5 +1,7 @@
 import "server-only"
 
+import { cache } from "react"
+
 import { signInBlockReason } from "@/lib/admin"
 import { isCategory } from "@/lib/categories"
 import { AppError } from "@/lib/errors"
@@ -44,14 +46,27 @@ function asOne<T>(value: T | T[] | null | undefined): T | null {
 type ProfileEmbed = { id: string; display_name: string; email: string }
 type GroupEmbed = { id: string; name: string }
 
-async function client() {
-  return createClient()
-}
+// One Supabase client per request. Creating it reads the cookie store, so reuse it.
+const client = cache(async () => createClient())
 
-export async function getSessionUser(): Promise<SessionUser | null> {
+/**
+ * Reads the signed-in user from the verified JWT claims instead of calling the
+ * Auth server on every render. With asymmetric signing keys this needs no network
+ * round trip; with legacy keys supabase-js falls back to getUser() itself.
+ */
+const currentAuthUser = cache(async (): Promise<{ id: string; email: string } | null> => {
   const supabase = await client()
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data.user) return null
+  const { data, error } = await supabase.auth.getClaims()
+  const claims = data?.claims
+  if (error || !claims?.sub) return null
+  return { id: claims.sub, email: typeof claims.email === "string" ? claims.email : "" }
+})
+
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
+  const supabase = await client()
+  const authUser = await currentAuthUser()
+  if (!authUser) return null
+  const data = { user: authUser }
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, display_name, email, is_admin, disabled, invited")
@@ -76,20 +91,20 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     demo: false,
     isAdmin: Boolean(profile?.is_admin),
   }
-}
+})
 
 export async function signIn(email: string, password: string): Promise<SessionUser> {
   const supabase = await client()
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim().toLowerCase(),
     password,
   })
-  if (error) throw new AppError("Email or password is incorrect")
-  const { data: session } = await supabase.auth.getUser()
+  if (error || !data.user) throw new AppError("Email or password is incorrect")
+  // signInWithPassword already returns the user, so one profile read is enough.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, is_admin, disabled, invited")
-    .eq("id", session.user?.id ?? "")
+    .select("id, display_name, email, is_admin, disabled, invited")
+    .eq("id", data.user.id)
     .maybeSingle()
   const reason = signInBlockReason(
     profile
@@ -105,9 +120,13 @@ export async function signIn(email: string, password: string): Promise<SessionUs
     await supabase.auth.signOut()
     throw new AppError(reason)
   }
-  const user = await getSessionUser()
-  if (!user) throw new AppError("Access is by invite only")
-  return user
+  return {
+    id: data.user.id,
+    email: (profile?.email as string | undefined) ?? data.user.email ?? "",
+    displayName: (profile?.display_name as string | undefined) ?? "You",
+    demo: false,
+    isAdmin: Boolean(profile?.is_admin),
+  }
 }
 
 export async function register(): Promise<SessionUser> {
@@ -154,15 +173,18 @@ async function requireUser() {
 }
 
 export async function listGroups(): Promise<GroupCard[]> {
-  const user = await requireUser()
+  const authUser = await currentAuthUser()
+  if (!authUser) throw new AppError("You need to sign in again")
   const supabase = await client()
   const [
+    user,
     { data: memberships, error },
     { data: pendingRows, error: pendingError },
     { data: openFlags, error: flagError },
   ] = await Promise.all([
+    requireUser(),
     supabase.from("group_members").select("group_id, user_id, role, groups(id, name), profiles(id, display_name, email)"),
-    supabase.from("settlements").select("group_id").eq("to_user_id", user.id).eq("status", "pending"),
+    supabase.from("settlements").select("group_id").eq("to_user_id", authUser.id).eq("status", "pending"),
     supabase.from("expense_flags").select("expense_id, expenses(group_id)").is("resolved_at", null),
   ])
   fail(error)
@@ -224,17 +246,11 @@ export async function createGroup(name: string) {
 }
 
 export async function getGroup(groupId: string): Promise<GroupDetail | null> {
-  const user = await requireUser()
   const supabase = await client()
-  const { data: group, error } = await supabase
-    .from("groups")
-    .select("id, name, created_by")
-    .eq("id", groupId)
-    .maybeSingle()
-  fail(error)
-  if (!group) return null
-
+  // Everything is scoped by row-level security, so all reads can start at once.
   const [
+    user,
+    { data: group, error },
     { data: memberRows, error: memberError },
     { data: expenseRows, error: expenseError },
     { data: flagRows, error: openFlagError },
@@ -242,6 +258,8 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
     { data: balanceRows, error: balanceError },
     { data: debtRows, error: debtError },
   ] = await Promise.all([
+    requireUser(),
+    supabase.from("groups").select("id, name, created_by").eq("id", groupId).maybeSingle(),
     supabase.from("group_members").select("user_id, role, profiles(id, display_name, email)").eq("group_id", groupId),
     supabase
       .from("expenses")
@@ -254,6 +272,8 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
     supabase.rpc("group_balances", { p_group_id: groupId }),
     supabase.rpc("simplified_debts", { p_group_id: groupId }),
   ])
+  fail(error)
+  if (!group) return null
   fail(memberError)
   fail(expenseError)
   fail(openFlagError)
@@ -535,16 +555,15 @@ export async function cancelSettlement(settlementId: string) {
 }
 
 export async function getSummary(groupId: string, monthStart: string): Promise<GroupSummary | null> {
-  const detail = await getGroup(groupId)
-  if (!detail) return null
   const supabase = await client()
   const selected = monthStartISO(monthStart)
-  const { data: months, error } = await supabase.rpc("group_month_totals", { p_group_id: groupId })
+  const [detail, { data: months, error }, { data: categories, error: categoryError }] = await Promise.all([
+    getGroup(groupId),
+    supabase.rpc("group_month_totals", { p_group_id: groupId }),
+    supabase.rpc("group_category_totals", { p_group_id: groupId, p_month: selected }),
+  ])
+  if (!detail) return null
   fail(error)
-  const { data: categories, error: categoryError } = await supabase.rpc("group_category_totals", {
-    p_group_id: groupId,
-    p_month: selected,
-  })
   fail(categoryError)
 
   const monthRows = ((months ?? []) as {
@@ -579,6 +598,20 @@ export async function getSummary(groupId: string, monthStart: string): Promise<G
     debts: detail.debts,
     months: monthRows,
   }
+}
+
+/** Cheap count for the nav badge, so the layout does not load the whole activity feed. */
+export async function countUnseenNotices(): Promise<number> {
+  const user = await currentAuthUser()
+  if (!user) return 0
+  const supabase = await client()
+  const { count, error } = await supabase
+    .from("share_notices")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .is("seen_at", null)
+  if (error) return 0
+  return count ?? 0
 }
 
 export async function getActivity() {

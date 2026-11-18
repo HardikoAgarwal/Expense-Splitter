@@ -236,6 +236,14 @@ export async function cancelSettlement(settlementId: string) {
   return demo.cancelSettlement(user.id, settlementId)
 }
 
+export const countUnseenNotices = cache(async () => {
+  if (!isDemoMode()) return remote.countUnseenNotices()
+  const user = await actor()
+  if (!user) return 0
+  const activity = await demo.getActivity(user.id)
+  return activity.notices.filter((notice) => !notice.seen).length
+})
+
 export const getActivity = cache(async () => {
   if (!isDemoMode()) return remote.getActivity()
   const user = await actor()

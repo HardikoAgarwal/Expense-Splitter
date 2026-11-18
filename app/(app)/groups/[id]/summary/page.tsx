@@ -11,11 +11,16 @@ export default async function SummaryPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ month?: string }>
 }) {
-  const user = await getSessionUser()
+  const [{ id }, { month }] = await Promise.all([params, searchParams])
+  const [user, summary] = await Promise.all([
+    getSessionUser(),
+    getSummary(id, month && /^\d{4}-\d{2}/.test(month) ? month : todayISO()),
+  ])
   if (!user) redirect("/login")
-  const { id } = await params
-  const month = (await searchParams).month
-  const summary = await getSummary(id, month && /^\d{4}-\d{2}/.test(month) ? month : todayISO())
   if (!summary) notFound()
-  return <SummaryScreen summary={summary} user={user} />
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <SummaryScreen summary={summary} user={user} />
+    </div>
+  )
 }

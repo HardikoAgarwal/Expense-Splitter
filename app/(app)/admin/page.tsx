@@ -8,5 +8,9 @@ export default async function AdminPage() {
   if (!user) redirect("/login")
   if (!user.isAdmin) redirect("/account")
   const people = await listAppUsers()
-  return <AdminScreen user={user} people={people} />
+  return (
+    <div className="mx-auto w-full max-w-3xl">
+      <AdminScreen user={user} people={people} />
+    </div>
+  )
 }

@@ -45,7 +45,7 @@ export function ExpenseDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const mine = expense?.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0
   const myFlag = expense?.flags.find((flag) => flag.userId === user.id) ?? null
-  const canFlag = mine > 0 && !myFlag
+  const canFlag = mine > 0 && !myFlag && expense?.createdBy !== user.id
   const canResolve = expense
     ? expense.flags.some((flag) => flag.userId === user.id || expense.createdBy === user.id)
     : false
@@ -97,7 +97,6 @@ export function ExpenseDetail({
         open={Boolean(expense)}
         onOpenChange={(open) => !open && onClose()}
         title={expense?.description ?? "Expense"}
-        description={expense ? `${categoryLabel(expense.category)} · ${formatDay(expense.expenseDate)}` : undefined}
         footer={
           expense && canModify ? (
             expense.locked ? (
@@ -123,13 +122,14 @@ export function ExpenseDetail({
         }
       >
         {expense ? (
-          <div className="space-y-6 pb-3">
-            <div className="flex items-center gap-3 rounded-[16px] bg-gradient-to-br from-accent/70 to-card px-4 py-4 ring-1 ring-border">
+          <div className="space-y-5 pb-3">
+            <div className="flex items-center gap-3">
               <CategoryIcon category={expense.category} />
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0">
                 <p className="money text-[1.9rem] leading-tight">{formatINR(expense.amountPaise)}</p>
-                <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                  {expense.payerId === user.id ? "You paid" : `${nameOf(expense.payerId).split(" ")[0]} paid`}
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Paid by {nameOf(expense.payerId)} · {formatDay(expense.expenseDate)} · {categoryLabel(expense.category)}
+                  {expense.createdBy !== expense.payerId ? ` · Added by ${nameOf(expense.createdBy)}` : ""}
                 </p>
               </div>
             </div>
@@ -155,18 +155,6 @@ export function ExpenseDetail({
               </Notice>
             ) : null}
 
-            <dl className="divide-y rounded-[16px] bg-card text-sm ring-1 ring-border">
-              <DetailRow label="Paid by">
-                <span className="flex min-w-0 items-center gap-2">
-                  <Person id={expense.payerId} name={fullName(expense.payerId)} size="sm" />
-                  <span className="truncate">{nameOf(expense.payerId)}</span>
-                </span>
-              </DetailRow>
-              <DetailRow label="Date">{formatDay(expense.expenseDate)}</DetailRow>
-              <DetailRow label="Category">{categoryLabel(expense.category)}</DetailRow>
-              <DetailRow label="Added by">{nameOf(expense.createdBy)}</DetailRow>
-            </dl>
-
             <section aria-label="Split">
               <SectionTitle as="h3" className="mb-3">
                 Split · {participants.length} {participants.length === 1 ? "person" : "people"}
@@ -191,7 +179,7 @@ export function ExpenseDetail({
             {canFlag ? (
               flagging ? (
                 <form
-                  className="space-y-3 rounded-[16px] bg-muted/50 p-3 ring-1 ring-border"
+                  className="space-y-3 rounded-[16px] bg-muted/50 p-3"
                   onSubmit={(event) => {
                     event.preventDefault()
                     flag()
@@ -220,7 +208,7 @@ export function ExpenseDetail({
               ) : (
                 <button
                   type="button"
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-border text-sm font-medium text-muted-foreground transition hover:border-warning/60 hover:bg-warning/5 hover:text-foreground"
+                  className="mx-auto flex h-10 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   onClick={() => setFlagging(true)}
                 >
                   <FlagIcon className="size-4" aria-hidden /> Something wrong? Flag it
@@ -229,12 +217,6 @@ export function ExpenseDetail({
             ) : myFlag ? (
               <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                 <FlagIcon className="size-4" aria-hidden /> You flagged this expense
-              </p>
-            ) : null}
-
-            {!canModify ? (
-              <p className="text-center text-xs text-muted-foreground">
-                Only {nameOf(expense.createdBy).split(" ")[0]} can edit or delete this expense.
               </p>
             ) : null}
           </div>
@@ -260,14 +242,5 @@ export function ExpenseDetail({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
-
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-right font-medium">{children}</dd>
-    </div>
   )
 }

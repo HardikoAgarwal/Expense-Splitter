@@ -213,7 +213,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
               </h2>
             </div>
             {group.expenses.length > 0 ? (
-              <div className="mb-3">
+              <div className="mb-6">
                 <ExpenseFilterBar
                   filters={filters}
                   onChange={setFilters}
@@ -460,7 +460,23 @@ function ExpenseList({
         const payer = group.members.find((member) => member.id === expense.payerId)?.displayName ?? "Someone"
         return (
           <div key={expense.id}>
-            {showMonth ? <p className={cn("px-1 pb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase", index === 0 ? "pt-1" : "pt-5")}>{month}</p> : null}
+            {showMonth ? (
+              <h3
+                className={cn(
+                  "flex items-baseline justify-between gap-3 px-1 pb-3",
+                  index === 0 ? "pt-0" : "pt-6",
+                )}
+              >
+                <span className="text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">{month}</span>
+                <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                  {formatINR(
+                    expenses
+                      .filter((item) => formatMonth(item.expenseDate) === month)
+                      .reduce((sum, item) => sum + item.amountPaise, 0),
+                  )}
+                </span>
+              </h3>
+            ) : null}
             <button
               type="button"
               onClick={() => onOpen(expense)}

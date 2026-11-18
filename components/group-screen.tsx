@@ -10,7 +10,7 @@ import { ExpenseDetail } from "@/components/expense-detail"
 import { Notice } from "@/components/notice"
 import { Person, PersonStack } from "@/components/person"
 import { ShowList } from "@/components/show-list"
-import { ShareActions } from "@/components/share-actions"
+import { MessagePreview, ShareActions } from "@/components/share-actions"
 import { useExpense, useRegisterGroup } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -246,17 +246,22 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         title={`Invite to ${group.name}`}
-        description="Share this code. It expires in 7 days."
+        description="Send this to your roommates. The code works for 7 days."
         footer={inviteText ? <ShareActions title={`Join ${group.name} on Hissa`} text={inviteText} /> : null}
       >
         <div className="space-y-4 pb-2" aria-busy={inviting.pending}>
-          <p className="money text-center text-4xl tracking-[0.12em]">{inviting.pending && !invite ? "····" : invite?.code}</p>
-          {inviteText ? <p className="rounded-[12px] bg-muted p-3 text-sm leading-6">{inviteText}</p> : null}
+          <div className="gradient-hero rounded-[16px] px-4 py-4 text-center">
+            <p className="text-xs font-medium tracking-[0.16em] text-white/70 uppercase">Invite code</p>
+            <p className="money mt-1 text-4xl tracking-[0.14em] text-white" aria-live="polite">
+              {inviting.pending && !invite ? "····" : invite?.code}
+            </p>
+          </div>
+          {inviteText ? <MessagePreview title={`Join ${group.name} on Hissa`} text={inviteText} /> : null}
           <div className="flex justify-center gap-2">
-            <Button variant="ghost" size="lg" className="text-primary" pending={inviting.pending} onClick={newCode}>
+            <Button variant="ghost" size="sm" className="text-primary" pending={inviting.pending} onClick={newCode}>
               New code
             </Button>
-            <Button variant="ghost" size="lg" className="text-muted-foreground" disabled={!invite || inviting.pending} onClick={revokeInvite}>
+            <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={!invite || inviting.pending} onClick={revokeInvite}>
               Revoke
             </Button>
           </div>

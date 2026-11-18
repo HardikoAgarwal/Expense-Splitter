@@ -2,30 +2,30 @@ import { describe, expect, it } from "vitest"
 import { accountInviteMessage, groupInviteMessage, parseJoinCode } from "@/lib/messages"
 
 describe("share messages", () => {
-  it("builds an account invite the admin can paste", () => {
+  it("builds a short account invite with the link and sign-in details on their own lines", () => {
     const text = accountInviteMessage({
       name: "Kabir Das",
-      appUrl: "https://hissa.example",
       email: "kabir@hissa.app",
       temporaryPassword: "temp-pass",
       welcomeUrl: "https://hissa.example/welcome/abc",
     })
-    expect(text).toContain("Hey Kabir!")
-    expect(text).toContain("https://hissa.example")
-    expect(text).toContain("kabir@hissa.app")
-    expect(text).toContain("temp-pass")
-    expect(text).toContain("https://hissa.example/welcome/abc")
+    const lines = text.split("\n")
+    expect(lines[0]).toContain("Hi Kabir")
+    expect(lines).toContain("https://hissa.example/welcome/abc")
+    expect(lines).toContain("Email: kabir@hissa.app")
+    expect(lines).toContain("Temporary password: temp-pass")
+    expect(lines.length).toBeLessThanOrEqual(8)
   })
 
-  it("builds a group invite with the code and link", () => {
+  it("builds a group invite with the link on its own line and the code", () => {
     const text = groupInviteMessage({
       group: "Flat 4B",
-      appUrl: "https://hissa.example",
+      appUrl: "https://hissa.example/",
       code: "FLAT4B7K",
     })
     expect(text).toContain("Flat 4B")
-    expect(text).toContain("https://hissa.example/join/FLAT4B7K")
-    expect(text).toContain("FLAT4B7K")
+    expect(text.split("\n")).toContain("https://hissa.example/join/FLAT4B7K")
+    expect(text).toContain("*FLAT4B7K*")
   })
 
   it("reads a join code from a link or a bare code", () => {

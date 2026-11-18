@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -51,6 +51,8 @@ export function Shell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const usersTab = pathname.startsWith("/account") && searchParams.get("tab") === "users"
   const [picker, setPicker] = useState(false)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -121,11 +123,11 @@ export function Shell({
             <SideNavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
               <BellIcon />
             </SideNavItem>
-            <SideNavItem href="/account" label="Account" active={pathname.startsWith("/account")}>
+            <SideNavItem href="/account" label="Account" active={pathname.startsWith("/account") && !usersTab}>
               <UserRoundIcon />
             </SideNavItem>
             {user.isAdmin ? (
-              <SideNavItem href="/admin" label="People" active={pathname.startsWith("/admin")}>
+              <SideNavItem href="/account?tab=users" label="Manage users" active={usersTab}>
                 <ShieldCheckIcon />
               </SideNavItem>
             ) : null}

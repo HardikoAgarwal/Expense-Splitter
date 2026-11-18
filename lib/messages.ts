@@ -5,25 +5,45 @@ export function appBaseUrl(fallback = ""): string {
   return fallback
 }
 
+function firstName(name: string) {
+  return name.trim().split(/\s+/)[0] || name.trim()
+}
+
+/**
+ * Short invite for a new account. Formatted for WhatsApp-style chats: a greeting,
+ * the link on its own line, then the sign-in details on their own lines.
+ */
 export function accountInviteMessage(input: {
   name: string
-  appUrl: string
   email: string
   temporaryPassword: string
   welcomeUrl: string
 }): string {
-  const first = input.name.trim().split(/\s+/)[0] || input.name
   return [
-    `Hey ${first}! I'm inviting you to join Hissa, our app for splitting shared expenses.`,
-    `1) Open ${input.appUrl}`,
-    `2) Sign in with ${input.email} and this temporary password: ${input.temporaryPassword} (or use this link to set your own: ${input.welcomeUrl})`,
-    "3) Change your password from Account. See you there!",
-  ].join(" ")
+    `Hi ${firstName(input.name)} 👋 You're invited to Hissa, our app for splitting flat expenses.`,
+    "",
+    "Set your password here:",
+    input.welcomeUrl,
+    "",
+    "Or sign in with:",
+    `Email: ${input.email}`,
+    `Temporary password: ${input.temporaryPassword}`,
+  ].join("\n")
 }
 
+export function groupJoinLink(appUrl: string, code: string) {
+  return `${appUrl.replace(/\/$/, "")}/join/${code}`
+}
+
+/** Short group invite: who it is for, the link on its own line, and the code as a fallback. */
 export function groupInviteMessage(input: { group: string; appUrl: string; code: string }): string {
-  const link = `${input.appUrl.replace(/\/$/, "")}/join/${input.code}`
-  return `Hey! Join our group '${input.group}' on Hissa so we can split expenses easily. Open ${link} or enter code ${input.code} in Hissa > Join a group.`
+  return [
+    `Join *${input.group}* on Hissa so we can split our expenses 🏠`,
+    "",
+    groupJoinLink(input.appUrl, input.code),
+    "",
+    `Or open Hissa → Join and enter code *${input.code}*`,
+  ].join("\n")
 }
 
 export function parseJoinCode(input: string): string {

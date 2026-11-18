@@ -1,163 +1,456 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
+import { useState, useSyncExternalStore } from "react"
+import {
+  ChevronRightIcon,
+  EyeIcon,
+  EyeOffIcon,
+  KeyRoundIcon,
+  LogOutIcon,
+  MailIcon,
+  MonitorIcon,
+  MoonIcon,
+  PencilIcon,
+  ShieldCheckIcon,
+  SunIcon,
+  UserRoundIcon,
+} from "lucide-react"
 import { useTheme } from "next-themes"
-import { toast } from "sonner"
 
+import { ManageUsers } from "@/components/admin-screen"
+import { AppSheet } from "@/components/app-sheet"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
-import { Section } from "@/components/section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { signOutAction, updateNameAction, updatePasswordAction } from "@/lib/actions"
-import type { SessionUser } from "@/lib/types"
+import type { AppUser, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
-export function AccountScreen({ user }: { user: SessionUser }) {
-  const [name, setName] = useState(user.displayName)
-  const [password, setPassword] = useState("")
-  const [confirm, setConfirm] = useState("")
-  const { theme, setTheme } = useTheme()
-  const nameAction = useAction()
-  const passwordAction = useAction()
-  const signOutRunner = useAction()
-  const saving = nameAction.pending
-  const savingPassword = passwordAction.pending
+export type AccountTab = "profile" | "users"
 
-  function save(event: React.FormEvent) {
-    event.preventDefault()
-    nameAction.run(() => updateNameAction(name), { success: "Name updated" })
+export function AccountScreen({
+  user,
+  people,
+  initialTab = "profile",
+}: {
+  user: SessionUser
+  /** Only loaded for admins. */
+  people: AppUser[] | null
+  initialTab?: AccountTab
+}) {
+  const canManage = user.isAdmin && people !== null
+  const [tab, setTab] = useState<AccountTab>(canManage ? initialTab : "profile")
+  // Follow the URL when it changes from outside (the sidebar link), without remounting.
+  const [lastInitial, setLastInitial] = useState(initialTab)
+  if (initialTab !== lastInitial) {
+    setLastInitial(initialTab)
+    if (canManage) setTab(initialTab)
   }
 
-  function savePassword(event: React.FormEvent) {
-    event.preventDefault()
-    if (password !== confirm) {
-      toast.error("Passwords do not match")
-      return
-    }
-    passwordAction.run(() => updatePasswordAction(password), {
-      success: "Password updated",
-      onSuccess: () => {
-        setPassword("")
-        setConfirm("")
-      },
-    })
-  }
-
-  function signOut() {
-    signOutRunner.run(() => signOutAction(), { navigate: "/login", replace: true })
+  function choose(next: AccountTab) {
+    setTab(next)
+    // Keep the tab in the URL so refresh and the sidebar link land on the same view.
+    const url = next === "users" ? "/account?tab=users" : "/account"
+    window.history.replaceState(null, "", url)
   }
 
   return (
-    <div className="px-4 pt-[max(1.25rem,env(safe-area-inset-top))]">
-      <p className="text-sm font-medium tracking-[0.18em] text-primary uppercase">Account</p>
-      <div className="mt-6 flex items-center gap-4">
-        <Person id={user.id} name={user.displayName} className="size-16 text-lg" />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{user.displayName}</h1>
-          <p className="text-sm text-muted-foreground">{user.email}</p>
-        </div>
-      </div>
+    <div className="px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-6 md:px-0 md:pt-6">
+      <ProfileHeader user={user} />
 
-      {user.isAdmin ? (
-        <Link
-          href="/admin"
-          className="mt-6 flex items-center justify-between rounded-[16px] bg-card px-4 py-4 ring-1 ring-border"
-        >
-          <span>
-            <span className="block font-medium">People</span>
-            <span className="text-sm text-muted-foreground">Create, disable, or remove accounts</span>
-          </span>
-          <span className="text-sm font-semibold text-primary">Open</span>
-        </Link>
-      ) : null}
-
-      <form onSubmit={(event) => save(event)} className="mt-6 space-y-3">
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-medium tracking-wide text-muted-foreground uppercase">Name</span>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className="h-12 rounded-[12px] px-3.5 text-base"
-          />
-        </label>
-        <Button type="submit" size="lg" className="w-full" disabled={name.trim() === user.displayName} pending={saving}>
-          {saving ? "Saving…" : "Save name"}
-        </Button>
-      </form>
-
-      <form onSubmit={(event) => savePassword(event)} className="mt-6 space-y-3">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Password</p>
-        <Input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="New password"
-          autoComplete="new-password"
-          className="h-12 rounded-[12px] px-3.5 text-base"
-        />
-        <Input
-          type="password"
-          value={confirm}
-          onChange={(event) => setConfirm(event.target.value)}
-          placeholder="Confirm password"
-          autoComplete="new-password"
-          className="h-12 rounded-[12px] px-3.5 text-base"
-        />
-        <Button
-          type="submit"
-          size="lg"
-          variant="outline"
-          className="w-full"
-          disabled={password.length < 8}
-          pending={savingPassword}
-        >
-          {savingPassword ? "Saving…" : "Update password"}
-        </Button>
-      </form>
-
-      <Section title="Appearance">
-        <div className="grid grid-cols-3 gap-2 rounded-[12px] bg-muted p-1">
+      {canManage ? (
+        <div role="tablist" aria-label="Account sections" className="mt-5 grid grid-cols-2 rounded-[12px] bg-muted p-1 md:max-w-sm">
           {(
             [
-              ["light", "Light"],
-              ["dark", "Dark"],
-              ["system", "System"],
+              ["profile", "Profile", <UserRoundIcon key="p" />],
+              ["users", "Manage users", <ShieldCheckIcon key="u" />],
             ] as const
-          ).map(([value, label]) => (
+          ).map(([value, label, icon]) => (
             <button
               key={value}
+              id={`tab-${value}`}
               type="button"
-              onClick={() => setTheme(value)}
+              role="tab"
+              aria-selected={tab === value}
+              aria-controls={`panel-${value}`}
+              onClick={() => choose(value)}
               className={cn(
-                "h-11 rounded-[12px] text-sm font-semibold",
-                theme === value ? "bg-card shadow-sm" : "text-muted-foreground",
+                "flex h-11 items-center justify-center gap-2 rounded-[10px] text-sm font-semibold transition [&_svg]:size-4",
+                tab === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
+              {icon}
               {label}
             </button>
           ))}
         </div>
-      </Section>
-
-      {user.demo ? (
-        <div className="mt-6">
-          <Notice title="Demo mode">Local ledger. Sign in as the other roommate to approve a payment.</Notice>
-        </div>
       ) : null}
 
-      <Button
-        type="button"
-        variant="outline"
-        size="lg"
-        className="mt-8 w-full text-muted-foreground md:w-auto"
-        pending={signOutRunner.pending}
-        onClick={() => signOut()}
-      >
-        {signOutRunner.pending ? "Signing out…" : "Sign out"}
-      </Button>
+      <div className="mt-6">
+        {tab === "users" && canManage ? (
+          <div role="tabpanel" id="panel-users" aria-labelledby="tab-users">
+            <ManageUsers user={user} people={people} />
+          </div>
+        ) : (
+          <div role={canManage ? "tabpanel" : undefined} id="panel-profile" aria-labelledby={canManage ? "tab-profile" : undefined}>
+            <ProfileSettings user={user} />
+          </div>
+        )}
+      </div>
     </div>
+  )
+}
+
+function ProfileHeader({ user }: { user: SessionUser }) {
+  return (
+    <section className="gradient-hero relative overflow-hidden rounded-[16px] px-5 py-5 md:px-6 md:py-6">
+      <div className="flex items-center gap-4">
+        <Person
+          id={user.id}
+          name={user.displayName}
+          className="size-16 text-lg ring-2 ring-white/40 after:hidden md:size-[72px] md:text-xl"
+        />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-white">{user.displayName}</h1>
+            {user.isAdmin ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/18 px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                <ShieldCheckIcon className="size-3" /> Admin
+              </span>
+            ) : null}
+          </div>
+          <p className="truncate text-sm text-white/75">{user.email}</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ProfileSettings({ user }: { user: SessionUser }) {
+  const [nameOpen, setNameOpen] = useState(false)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const signingOut = useAction()
+
+  function signOut() {
+    signingOut.run(() => signOutAction(), { navigate: "/login", replace: true })
+  }
+
+  return (
+    <div className="space-y-6">
+      <SettingsGroup title="Account details">
+        <SettingsRow icon={<UserRoundIcon />} label="Name" value={user.displayName} onClick={() => setNameOpen(true)} actionIcon={<PencilIcon />} />
+        <SettingsRow icon={<MailIcon />} label="Email" value={user.email} hint="Ask the admin to change it" />
+      </SettingsGroup>
+
+      <SettingsGroup title="Security">
+        <SettingsRow
+          icon={<KeyRoundIcon />}
+          label="Password"
+          value="Change your password"
+          onClick={() => setPasswordOpen(true)}
+          actionIcon={<ChevronRightIcon />}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Appearance">
+        <div className="p-3">
+          <ThemePicker />
+        </div>
+      </SettingsGroup>
+
+      {user.demo ? <Notice title="Demo mode">Local ledger. Sign in as the other roommate to approve a payment.</Notice> : null}
+
+      <SettingsGroup>
+        <button
+          type="button"
+          onClick={signOut}
+          disabled={signingOut.pending}
+          className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-negative transition hover:bg-negative/5 disabled:opacity-60"
+        >
+          <span className="flex size-9 items-center justify-center rounded-[10px] bg-negative/10 [&_svg]:size-4">
+            <LogOutIcon />
+          </span>
+          <span className="flex-1 font-medium">{signingOut.pending ? "Signing out…" : "Sign out"}</span>
+        </button>
+      </SettingsGroup>
+
+      <EditNameDialog user={user} open={nameOpen} onOpenChange={setNameOpen} />
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+    </div>
+  )
+}
+
+function SettingsGroup({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section>
+      {title ? <h2 className="mb-2 px-1 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">{title}</h2> : null}
+      <div className="divide-y overflow-hidden rounded-[16px] bg-card ring-1 ring-border">{children}</div>
+    </section>
+  )
+}
+
+function SettingsRow({
+  icon,
+  label,
+  value,
+  hint,
+  onClick,
+  actionIcon,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  hint?: string
+  onClick?: () => void
+  actionIcon?: React.ReactNode
+}) {
+  const body = (
+    <>
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-accent text-accent-foreground [&_svg]:size-4">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        <span className="block truncate font-medium">{value}</span>
+        {hint ? <span className="block text-xs text-muted-foreground">{hint}</span> : null}
+      </span>
+      {actionIcon ? <span className="text-muted-foreground [&_svg]:size-4">{actionIcon}</span> : null}
+    </>
+  )
+  if (!onClick) return <div className="flex items-center gap-3 px-4 py-3">{body}</div>
+  return (
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/60">
+      {body}
+    </button>
+  )
+}
+
+function ThemePicker() {
+  const { theme, setTheme } = useTheme()
+  // The theme is only known in the browser; render it unselected on the server to avoid a hydration mismatch.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
+  const current = mounted ? theme : undefined
+  return (
+    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1 rounded-[12px] bg-muted p-1">
+      {(
+        [
+          ["light", "Light", <SunIcon key="l" />],
+          ["dark", "Dark", <MoonIcon key="d" />],
+          ["system", "System", <MonitorIcon key="s" />],
+        ] as const
+      ).map(([value, label, icon]) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={current === value}
+          onClick={() => setTheme(value)}
+          className={cn(
+            "flex h-10 items-center justify-center gap-1.5 rounded-[10px] text-sm font-semibold transition [&_svg]:size-4",
+            current === value ? "bg-card shadow-sm" : "text-muted-foreground",
+          )}
+        >
+          {icon}
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function EditNameDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: SessionUser
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [name, setName] = useState(user.displayName)
+  const { pending, run } = useAction()
+  const trimmed = name.trim()
+  const error = trimmed.length > 0 && (trimmed.length < 2 || trimmed.length > 40) ? "Use 2 to 40 characters." : null
+
+  function save(event: React.FormEvent) {
+    event.preventDefault()
+    if (error || !trimmed) return
+    run(() => updateNameAction(trimmed), { success: "Name updated", onSuccess: () => onOpenChange(false) })
+  }
+
+  return (
+    <AppSheet
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setName(user.displayName)
+        onOpenChange(next)
+      }}
+      title="Edit name"
+      description="This is how roommates see you in groups."
+      footer={
+        <Button
+          type="submit"
+          form="edit-name"
+          size="xl"
+          className="w-full"
+          disabled={!trimmed || Boolean(error) || trimmed === user.displayName}
+          pending={pending}
+        >
+          {pending ? "Saving…" : "Save name"}
+        </Button>
+      }
+    >
+      <form id="edit-name" onSubmit={save} className="space-y-1.5 pb-2">
+        <label htmlFor="display-name" className="text-sm font-medium">
+          Name
+        </label>
+        <Input
+          id="display-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoComplete="name"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "display-name-error" : undefined}
+          className="h-12 rounded-[12px] px-3.5 text-base"
+        />
+        {error ? (
+          <p id="display-name-error" className="text-xs text-negative">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </AppSheet>
+  )
+}
+
+export function passwordStrength(password: string): { score: 0 | 1 | 2 | 3; label: string } {
+  if (password.length === 0) return { score: 0, label: "" }
+  if (password.length < 8) return { score: 0, label: `${8 - password.length} more characters` }
+  const variety = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((pattern) => pattern.test(password)).length
+  if (password.length >= 12 && variety >= 3) return { score: 3, label: "Strong" }
+  if (password.length >= 10 || variety >= 3) return { score: 2, label: "Good" }
+  return { score: 1, label: "Okay. Longer is stronger." }
+}
+
+function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [visible, setVisible] = useState(false)
+  const [touched, setTouched] = useState(false)
+  const { pending, run } = useAction()
+  const strength = passwordStrength(password)
+  const tooShort = password.length > 0 && password.length < 8
+  const mismatch = confirm.length > 0 && confirm !== password
+  const canSave = password.length >= 8 && confirm === password
+
+  function reset() {
+    setPassword("")
+    setConfirm("")
+    setVisible(false)
+    setTouched(false)
+  }
+
+  function save(event: React.FormEvent) {
+    event.preventDefault()
+    setTouched(true)
+    if (!canSave) return
+    run(() => updatePasswordAction(password), {
+      success: "Password changed",
+      onSuccess: () => {
+        reset()
+        onOpenChange(false)
+      },
+    })
+  }
+
+  return (
+    <AppSheet
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) reset()
+        onOpenChange(next)
+      }}
+      title="Change password"
+      description="Use at least 8 characters. You stay signed in on this device."
+      footer={
+        <Button type="submit" form="change-password" size="xl" className="w-full" disabled={!canSave} pending={pending}>
+          {pending ? "Saving…" : "Change password"}
+        </Button>
+      }
+    >
+      <form id="change-password" onSubmit={save} className="space-y-4 pb-2">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="new-password" className="text-sm font-medium">
+              New password
+            </label>
+            <button
+              type="button"
+              onClick={() => setVisible((value) => !value)}
+              aria-pressed={visible}
+              className="inline-flex items-center gap-1 rounded-[8px] px-1.5 py-1 text-xs font-medium text-primary hover:bg-accent"
+            >
+              {visible ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+              {visible ? "Hide" : "Show"}
+            </button>
+          </div>
+          <Input
+            id="new-password"
+            type={visible ? "text" : "password"}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            aria-invalid={touched && tooShort ? true : undefined}
+            aria-describedby="password-strength"
+            className="h-12 rounded-[12px] px-3.5 text-base"
+          />
+          <div id="password-strength" aria-live="polite" className="space-y-1">
+            <div className="grid grid-cols-3 gap-1" aria-hidden>
+              {[1, 2, 3].map((level) => (
+                <span
+                  key={level}
+                  className={cn(
+                    "h-1 rounded-full bg-muted transition-colors",
+                    password.length > 0 && strength.score >= level && (strength.score === 1 ? "bg-warning" : "bg-positive"),
+                    password.length > 0 && strength.score === 0 && level === 1 && "bg-negative/60",
+                  )}
+                />
+              ))}
+            </div>
+            <p className={cn("text-xs", tooShort ? "text-negative" : "text-muted-foreground")}>
+              {strength.label || "At least 8 characters. Mix letters, numbers and symbols."}
+            </p>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="confirm-password" className="text-sm font-medium">
+            Confirm new password
+          </label>
+          <Input
+            id="confirm-password"
+            type={visible ? "text" : "password"}
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+            autoComplete="new-password"
+            aria-invalid={mismatch ? true : undefined}
+            aria-describedby={mismatch ? "confirm-error" : undefined}
+            className="h-12 rounded-[12px] px-3.5 text-base"
+          />
+          {mismatch ? (
+            <p id="confirm-error" className="text-xs text-negative">
+              Passwords do not match yet.
+            </p>
+          ) : confirm.length > 0 && canSave ? (
+            <p className="text-xs text-positive">Passwords match.</p>
+          ) : null}
+        </div>
+      </form>
+    </AppSheet>
   )
 }

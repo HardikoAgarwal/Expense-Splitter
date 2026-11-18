@@ -2,39 +2,34 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 
 import { Mark } from "@/components/mark"
 import { Notice } from "@/components/notice"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { updatePasswordAction } from "@/lib/actions"
+import { useAction } from "@/lib/use-action"
 
 export function ResetPasswordScreen({ signedIn }: { signedIn: boolean }) {
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
-  const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
+  const { pending, run } = useAction()
 
-  async function submit(event: React.FormEvent) {
+  function submit(event: React.FormEvent) {
     event.preventDefault()
     if (password !== confirm) {
       setError("Passwords do not match")
       return
     }
-    setPending(true)
     setError(null)
-    const result = await updatePasswordAction(password)
-    setPending(false)
-    if (!result.ok) {
-      setError(result.error)
-      return
-    }
-    toast.success("Password updated")
-    router.push("/groups")
-    router.refresh()
+    run(() => updatePasswordAction(password), {
+      navigate: "/groups",
+      replace: true,
+      success: "Password updated",
+      onError: setError,
+      toastError: false,
+    })
   }
 
   return (
@@ -58,7 +53,7 @@ export function ResetPasswordScreen({ signedIn }: { signedIn: boolean }) {
           </Link>
         </div>
       ) : (
-        <form onSubmit={(event) => void submit(event)} className="mt-2 space-y-3">
+        <form onSubmit={submit} className="mt-2 space-y-3">
           <Input
             type="password"
             value={password}
@@ -76,7 +71,7 @@ export function ResetPasswordScreen({ signedIn }: { signedIn: boolean }) {
             className="h-12 rounded-[12px] px-3.5 text-base"
           />
           {error ? <Notice tone="negative" title="Could not save">{error}</Notice> : null}
-          <Button type="submit" size="xl" className="w-full" disabled={pending || password.length < 8}>
+          <Button type="submit" size="xl" className="w-full" disabled={password.length < 8} pending={pending}>
             {pending ? "Saving…" : "Save password"}
           </Button>
         </form>

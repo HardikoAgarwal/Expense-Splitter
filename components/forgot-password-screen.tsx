@@ -71,7 +71,7 @@ export function ForgotPasswordScreen({ demo }: { demo: boolean }) {
             className="h-12 rounded-[12px] px-3.5 text-base"
           />
           {error ? <Notice tone="negative" title="Could not send">{error}</Notice> : null}
-          <Button type="submit" size="xl" className="w-full" disabled={pending || email.trim().length === 0}>
+          <Button type="submit" size="xl" className="w-full" disabled={email.trim().length === 0} pending={pending}>
             {pending ? "Sending…" : "Send reset link"}
           </Button>
           <Link href="/login" className="block text-center text-sm font-medium text-primary">

@@ -2,9 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { ArrowLeftIcon, EllipsisIcon } from "lucide-react"
-import { toast } from "sonner"
 
 import { AppSheet } from "@/components/app-sheet"
 import { Person } from "@/components/person"
@@ -14,54 +12,44 @@ import { Input } from "@/components/ui/input"
 import { createAccountAction, removeUserAction, setUserDisabledAction } from "@/lib/actions"
 import { accountInviteMessage, appBaseUrl } from "@/lib/messages"
 import type { AppUser, CreatedAccount, SessionUser } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 
 export function AdminScreen({ user, people }: { user: SessionUser; people: AppUser[] }) {
   const [addOpen, setAddOpen] = useState(false)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
-  const [pending, setPending] = useState(false)
   const [created, setCreated] = useState<CreatedAccount | null>(null)
   const [selected, setSelected] = useState<AppUser | null>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
-  const router = useRouter()
+  const { pending, run } = useAction()
 
-  async function create(event: React.FormEvent) {
+  function create(event: React.FormEvent) {
     event.preventDefault()
-    setPending(true)
-    const result = await createAccountAction({ email, displayName: name })
-    setPending(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    setCreated(result.data)
-    setAddOpen(false)
-    setName("")
-    setEmail("")
-    router.refresh()
+    run(() => createAccountAction({ email, displayName: name }), {
+      onSuccess: (account) => {
+        setCreated(account)
+        setAddOpen(false)
+        setName("")
+        setEmail("")
+      },
+    })
   }
 
-  async function toggle(person: AppUser) {
-    const result = await setUserDisabledAction(person.id, !person.disabled)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(person.disabled ? "Account enabled" : "Account disabled")
-    setSelected(null)
-    router.refresh()
+  function toggle(person: AppUser) {
+    run(() => setUserDisabledAction(person.id, !person.disabled), {
+      success: person.disabled ? "Account enabled" : "Account disabled",
+      onSuccess: () => setSelected(null),
+    })
   }
 
-  async function remove(person: AppUser) {
-    const result = await removeUserAction(person.id)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Account removed")
-    setSelected(null)
-    setConfirmRemove(false)
-    router.refresh()
+  function remove(person: AppUser) {
+    run(() => removeUserAction(person.id), {
+      success: "Account removed",
+      onSuccess: () => {
+        setSelected(null)
+        setConfirmRemove(false)
+      },
+    })
   }
 
   const welcomeUrl = created ? `${appBaseUrl()}${created.welcomePath}` : ""
@@ -130,7 +118,7 @@ export function AdminScreen({ user, people }: { user: SessionUser; people: AppUs
           </Button>
         }
       >
-        <form id="add-user" onSubmit={(event) => void create(event)} className="space-y-3">
+        <form id="add-user" onSubmit={(event) => create(event)} className="space-y-3">
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name" className="h-12 rounded-[12px] px-3.5 text-base" />
           <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" className="h-12 rounded-[12px] px-3.5 text-base" />
         </form>
@@ -154,12 +142,12 @@ export function AdminScreen({ user, people }: { user: SessionUser; people: AppUs
       >
         {selected ? (
           <div className="space-y-3 pb-2">
-            <button type="button" className="text-sm font-medium text-primary" onClick={() => void toggle(selected)}>
+            <button type="button" className="text-sm font-medium text-primary" onClick={() => toggle(selected)}>
               {selected.disabled ? "Enable account" : "Disable account"}
             </button>
             <div>
               {confirmRemove ? (
-                <button type="button" className="text-sm font-medium text-negative" onClick={() => void remove(selected)}>
+                <button type="button" className="text-sm font-medium text-negative" onClick={() => remove(selected)}>
                   Confirm delete
                 </button>
               ) : (

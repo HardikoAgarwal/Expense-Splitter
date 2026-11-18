@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import { toast } from "sonner"
 
@@ -13,52 +12,42 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { signOutAction, updateNameAction, updatePasswordAction } from "@/lib/actions"
 import type { SessionUser } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
 export function AccountScreen({ user }: { user: SessionUser }) {
   const [name, setName] = useState(user.displayName)
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [savingPassword, setSavingPassword] = useState(false)
   const { theme, setTheme } = useTheme()
-  const router = useRouter()
+  const nameAction = useAction()
+  const passwordAction = useAction()
+  const signOutRunner = useAction()
+  const saving = nameAction.pending
+  const savingPassword = passwordAction.pending
 
-  async function save(event: React.FormEvent) {
+  function save(event: React.FormEvent) {
     event.preventDefault()
-    setSaving(true)
-    const result = await updateNameAction(name)
-    setSaving(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Name updated")
-    router.refresh()
+    nameAction.run(() => updateNameAction(name), { success: "Name updated" })
   }
 
-  async function savePassword(event: React.FormEvent) {
+  function savePassword(event: React.FormEvent) {
     event.preventDefault()
     if (password !== confirm) {
       toast.error("Passwords do not match")
       return
     }
-    setSavingPassword(true)
-    const result = await updatePasswordAction(password)
-    setSavingPassword(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    setPassword("")
-    setConfirm("")
-    toast.success("Password updated")
+    passwordAction.run(() => updatePasswordAction(password), {
+      success: "Password updated",
+      onSuccess: () => {
+        setPassword("")
+        setConfirm("")
+      },
+    })
   }
 
-  async function signOut() {
-    await signOutAction()
-    router.push("/login")
-    router.refresh()
+  function signOut() {
+    signOutRunner.run(() => signOutAction(), { navigate: "/login", replace: true })
   }
 
   return (
@@ -85,7 +74,7 @@ export function AccountScreen({ user }: { user: SessionUser }) {
         </Link>
       ) : null}
 
-      <form onSubmit={(event) => void save(event)} className="mt-6 space-y-3">
+      <form onSubmit={(event) => save(event)} className="mt-6 space-y-3">
         <label className="block">
           <span className="mb-1.5 block text-xs font-medium tracking-wide text-muted-foreground uppercase">Name</span>
           <Input
@@ -94,12 +83,12 @@ export function AccountScreen({ user }: { user: SessionUser }) {
             className="h-12 rounded-[12px] px-3.5 text-base"
           />
         </label>
-        <Button type="submit" size="lg" className="w-full" disabled={saving || name.trim() === user.displayName}>
+        <Button type="submit" size="lg" className="w-full" disabled={name.trim() === user.displayName} pending={saving}>
           {saving ? "Saving…" : "Save name"}
         </Button>
       </form>
 
-      <form onSubmit={(event) => void savePassword(event)} className="mt-6 space-y-3">
+      <form onSubmit={(event) => savePassword(event)} className="mt-6 space-y-3">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Password</p>
         <Input
           type="password"
@@ -122,7 +111,8 @@ export function AccountScreen({ user }: { user: SessionUser }) {
           size="lg"
           variant="outline"
           className="w-full"
-          disabled={savingPassword || password.length < 8}
+          disabled={password.length < 8}
+          pending={savingPassword}
         >
           {savingPassword ? "Saving…" : "Update password"}
         </Button>
@@ -158,9 +148,16 @@ export function AccountScreen({ user }: { user: SessionUser }) {
         </div>
       ) : null}
 
-      <button type="button" className="mt-8 text-sm font-medium text-muted-foreground" onClick={() => void signOut()}>
-        Sign out
-      </button>
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        className="mt-8 w-full text-muted-foreground md:w-auto"
+        pending={signOutRunner.pending}
+        onClick={() => signOut()}
+      >
+        {signOutRunner.pending ? "Signing out…" : "Sign out"}
+      </Button>
     </div>
   )
 }

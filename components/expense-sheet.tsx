@@ -1,9 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, LockIcon } from "lucide-react"
-import { toast } from "sonner"
 
 import { CategoryIcon } from "@/components/category-icon"
 import { Notice } from "@/components/notice"
@@ -23,6 +21,7 @@ import { CATEGORIES } from "@/lib/categories"
 import { splitEqually, validateShares } from "@/lib/ledger"
 import { formatDay, formatINR, paiseToInput, rupeesToPaise, todayISO } from "@/lib/money"
 import type { Expense, GroupDetail, Member, Share } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
 export function ExpenseSheet({
@@ -88,7 +87,7 @@ function ExpenseForm({
   userId: string
   onDone: () => void
 }) {
-  const router = useRouter()
+  const { pending: saving, run } = useAction()
   const locked = Boolean(expense?.locked)
   const initial = useMemo(
     () => initialState(group.members, expense, userId),
@@ -102,7 +101,6 @@ function ExpenseForm({
   const [mode, setMode] = useState<"equal" | "custom">(initial.mode)
   const [selected, setSelected] = useState<string[]>(initial.selected)
   const [custom, setCustom] = useState<Record<string, string>>(initial.custom)
-  const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [step, setStep] = useState<"main" | "split">("main")
 
@@ -124,42 +122,34 @@ function ExpenseForm({
   const canSave =
     !locked && !hitsLock && !saving && Boolean(description.trim()) && shareError === null && Boolean(shares)
 
-  async function save() {
+  function save() {
     if (!canSave || !shares || totalPaise === null) return
-    setSaving(true)
-    const result = await saveExpenseAction({
-      id: expense?.id,
-      groupId: group.id,
-      description,
-      amountPaise: totalPaise,
-      payerId,
-      expenseDate,
-      category,
-      shares,
-    })
-    setSaving(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(expense ? "Expense updated" : "Expense added")
-    onDone()
-    router.refresh()
+    // The sheet closes and the toast shows only once the group list has the new numbers.
+    run(
+      () =>
+        saveExpenseAction({
+          id: expense?.id,
+          groupId: group.id,
+          description,
+          amountPaise: totalPaise,
+          payerId,
+          expenseDate,
+          category,
+          shares,
+        }),
+      { success: expense ? "Expense updated" : "Expense added", onSuccess: onDone },
+    )
   }
 
-  async function remove() {
+  function remove() {
     if (!expense) return
-    setSaving(true)
-    const result = await deleteExpenseAction(expense.id)
-    setSaving(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Expense deleted")
-    setConfirmDelete(false)
-    onDone()
-    router.refresh()
+    run(() => deleteExpenseAction(expense.id), {
+      success: "Expense deleted",
+      onSuccess: () => {
+        setConfirmDelete(false)
+        onDone()
+      },
+    })
   }
 
   function fillRest(memberId: string) {
@@ -200,7 +190,7 @@ function ExpenseForm({
           setStep("main")
           return
         }
-        void save()
+        save()
       }}
     >
       <DialogHeader className="shrink-0 space-y-1 px-4 pt-4 pr-12 pb-2 text-left">
@@ -308,7 +298,7 @@ function ExpenseForm({
             </div>
 
             <Field label="Category">
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
                 {CATEGORIES.map((item) => {
                   const active = category === item.id
                   return (
@@ -355,7 +345,7 @@ function ExpenseForm({
           </Button>
         ) : (
           <>
-            <Button type="submit" size="xl" className="w-full" disabled={!canSave}>
+            <Button type="submit" size="xl" className="w-full" disabled={!canSave} pending={saving}>
               {saving ? "Saving…" : expense ? "Save changes" : "Save expense"}
             </Button>
             {expense && !locked ? (
@@ -385,8 +375,8 @@ function ExpenseForm({
             <Button type="button" variant="outline" className="h-11 rounded-[12px]" onClick={() => setConfirmDelete(false)}>
               Keep it
             </Button>
-            <Button type="button" variant="destructive" className="h-11 rounded-[12px]" onClick={() => void remove()}>
-              Delete
+            <Button type="button" variant="destructive" className="h-11 rounded-[12px]" pending={saving} onClick={remove}>
+              {saving ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

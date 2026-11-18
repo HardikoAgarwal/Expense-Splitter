@@ -1,8 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 
 import { AppSheet } from "@/components/app-sheet"
 import { Notice } from "@/components/notice"
@@ -17,7 +15,8 @@ import {
 } from "@/components/ui/dialog"
 import { deleteExpenseAction, flagExpenseAction, resolveFlagAction } from "@/lib/actions"
 import { formatDay, formatINR } from "@/lib/money"
-import type { Expense, GroupDetail, SessionUser } from "@/lib/types"
+import type { ActionResult, Expense, GroupDetail, SessionUser } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 
 export function ExpenseDetail({
   expense,
@@ -32,10 +31,9 @@ export function ExpenseDetail({
   onEdit: (expense: Expense) => void
   onClose: () => void
 }) {
-  const router = useRouter()
+  const { pending: busy, run } = useAction()
   const [reason, setReason] = useState("")
   const [flagging, setFlagging] = useState(false)
-  const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const mine = expense?.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0
   const myFlag = expense?.flags.find((flag) => flag.userId === user.id) ?? null
@@ -47,51 +45,41 @@ export function ExpenseDetail({
   const payer = group.members.find((member) => member.id === expense?.payerId)
   const participants = (expense?.shares ?? []).filter((share) => share.sharePaise > 0)
 
-  async function flag() {
+  function flag() {
     if (!expense) return
-    setBusy(true)
-    const result = await flagExpenseAction(expense.id, reason)
-    setBusy(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Flagged")
-    setFlagging(false)
-    setReason("")
-    router.refresh()
+    run(() => flagExpenseAction(expense.id, reason), {
+      success: "Flagged",
+      onSuccess: () => {
+        setFlagging(false)
+        setReason("")
+      },
+    })
   }
 
-  async function resolveOpen() {
+  function resolveOpen() {
     if (!expense) return
     const allowed = expense.flags.filter((flag) => flag.userId === user.id || expense.createdBy === user.id)
-    setBusy(true)
-    for (const openFlag of allowed) {
-      const result = await resolveFlagAction(openFlag.id)
-      if (!result.ok) {
-        setBusy(false)
-        toast.error(result.error)
-        return
-      }
-    }
-    setBusy(false)
-    toast.success("Flag resolved")
-    router.refresh()
+    run(
+      async (): Promise<ActionResult<undefined>> => {
+        for (const openFlag of allowed) {
+          const result = await resolveFlagAction(openFlag.id)
+          if (!result.ok) return result
+        }
+        return { ok: true, data: undefined }
+      },
+      { success: "Flag resolved" },
+    )
   }
 
-  async function remove() {
+  function remove() {
     if (!expense) return
-    setBusy(true)
-    const result = await deleteExpenseAction(expense.id)
-    setBusy(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Expense deleted")
-    setConfirmDelete(false)
-    onClose()
-    router.refresh()
+    run(() => deleteExpenseAction(expense.id), {
+      success: "Expense deleted",
+      onSuccess: () => {
+        setConfirmDelete(false)
+        onClose()
+      },
+    })
   }
 
   return (
@@ -140,7 +128,7 @@ export function ExpenseDetail({
                       type="button"
                       className="text-sm font-medium text-primary"
                       disabled={busy}
-                      onClick={() => void resolveOpen()}
+                      onClick={() => resolveOpen()}
                     >
                       Resolve
                     </button>
@@ -167,7 +155,7 @@ export function ExpenseDetail({
                   className="space-y-2"
                   onSubmit={(event) => {
                     event.preventDefault()
-                    void flag()
+                    flag()
                   }}
                 >
                   <textarea
@@ -177,7 +165,7 @@ export function ExpenseDetail({
                     placeholder="Optional note"
                     className="min-h-20 w-full rounded-[12px] border border-input bg-transparent px-3 py-2 text-base outline-none"
                   />
-                  <Button type="submit" variant="outline" className="h-11 w-full rounded-[12px]" disabled={busy}>
+                  <Button type="submit" variant="outline" className="h-11 w-full rounded-[12px]" pending={busy}>
                     Flag expense
                   </Button>
                 </form>
@@ -207,7 +195,7 @@ export function ExpenseDetail({
             <Button type="button" variant="outline" className="h-11 rounded-[12px]" onClick={() => setConfirmDelete(false)}>
               Keep it
             </Button>
-            <Button type="button" variant="destructive" className="h-11 rounded-[12px]" disabled={busy} onClick={() => void remove()}>
+            <Button type="button" variant="destructive" className="h-11 rounded-[12px]" pending={busy} onClick={() => remove()}>
               Delete
             </Button>
           </DialogFooter>

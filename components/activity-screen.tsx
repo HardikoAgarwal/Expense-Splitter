@@ -1,8 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
@@ -12,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { markNoticeSeenAction, resolveSettlementAction } from "@/lib/actions"
 import { formatINR } from "@/lib/money"
 import type { ActivityItem, ShareNotice } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
 export function ActivityScreen({
@@ -23,16 +22,12 @@ export function ActivityScreen({
   notices: ShareNotice[]
   feed: ActivityItem[]
 }) {
-  const router = useRouter()
+  const { pending: busy, run } = useAction()
 
-  async function resolve(id: string, approve: boolean) {
-    const result = await resolveSettlementAction(id, approve)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(approve ? "Payment approved" : "Payment declined")
-    router.refresh()
+  function resolve(id: string, approve: boolean) {
+    run(() => resolveSettlementAction(id, approve), {
+      success: approve ? "Payment approved" : "Payment declined",
+    })
   }
 
   return (
@@ -84,10 +79,10 @@ export function ActivityScreen({
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="h-11 rounded-[12px]" onClick={() => void resolve(item.settlementId!, false)}>
+                  <Button variant="outline" className="h-11 rounded-[12px]" disabled={busy} onClick={() => resolve(item.settlementId!, false)}>
                     Reject
                   </Button>
-                  <Button className="h-11 rounded-[12px]" onClick={() => void resolve(item.settlementId!, true)}>
+                  <Button className="h-11 rounded-[12px]" pending={busy} onClick={() => resolve(item.settlementId!, true)}>
                     Approve
                   </Button>
                 </div>

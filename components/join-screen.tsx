@@ -1,14 +1,12 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
 
 import { Mark } from "@/components/mark"
 import { Button } from "@/components/ui/button"
 import { joinGroupAction } from "@/lib/actions"
 import type { InvitePreview, SessionUser } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 
 export function JoinScreen({
   code,
@@ -19,21 +17,14 @@ export function JoinScreen({
   preview: InvitePreview
   user: SessionUser | null
 }) {
-  const [pending, setPending] = useState(false)
-  const router = useRouter()
+  const { pending, run } = useAction()
   const next = `/join/${code}`
 
-  async function join() {
-    setPending(true)
-    const result = await joinGroupAction(code)
-    setPending(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(result.data.alreadyMember ? "You are already in" : "You joined")
-    router.push(`/groups/${result.data.groupId}`)
-    router.refresh()
+  function join() {
+    run(() => joinGroupAction(code), {
+      navigate: (data) => `/groups/${data.groupId}`,
+      success: (data) => (data.alreadyMember ? "You are already in" : "You joined"),
+    })
   }
 
   return (
@@ -63,7 +54,7 @@ export function JoinScreen({
                 Open group
               </Button>
             ) : (
-              <Button size="xl" className="w-full" disabled={pending} onClick={() => void join()}>
+              <Button size="xl" className="w-full" pending={pending} onClick={join}>
                 {pending ? "Joining…" : `Join ${preview.groupName}`}
               </Button>
             )}

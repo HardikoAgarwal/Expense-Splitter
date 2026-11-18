@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { ArrowLeftIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -21,6 +20,7 @@ import {
 import { disputedExpensesInRange } from "@/lib/disputes"
 import { formatDay, formatINR, paiseToInput, rupeesToPaise, todayISO } from "@/lib/money"
 import type { GroupDetail, SessionUser } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
 export function SettleScreen({ group, user }: { group: GroupDetail; user: SessionUser }) {
@@ -29,8 +29,8 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
   const [upToDate, setUpToDate] = useState(todayISO())
   const [amount, setAmount] = useState("")
   const [owed, setOwed] = useState<number | null>(null)
-  const [saving, setSaving] = useState(false)
-  const router = useRouter()
+  const { pending: saving, run } = useAction()
+  const resolver = useAction()
   const other = others.find((member) => member.id === otherId)
 
   useEffect(() => {
@@ -50,48 +50,33 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
     }
   }, [group.id, otherId, upToDate])
 
-  async function submit(event: React.FormEvent) {
+  function submit(event: React.FormEvent) {
     event.preventDefault()
     const paise = rupeesToPaise(amount)
     if (!otherId || paise === null || paise <= 0) {
       toast.error("Enter how much you paid")
       return
     }
-    setSaving(true)
-    const result = await requestSettlementAction({
-      groupId: group.id,
-      toUserId: otherId,
-      amountPaise: paise,
-      upToDate,
+    run(
+      () =>
+        requestSettlementAction({
+          groupId: group.id,
+          toUserId: otherId,
+          amountPaise: paise,
+          upToDate,
+        }),
+      { success: "Request sent", onSuccess: () => setAmount("") },
+    )
+  }
+
+  function resolve(id: string, approve: boolean) {
+    resolver.run(() => resolveSettlementAction(id, approve), {
+      success: approve ? "Payment approved" : "Payment declined",
     })
-    setSaving(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Request sent")
-    setAmount("")
-    router.refresh()
   }
 
-  async function resolve(id: string, approve: boolean) {
-    const result = await resolveSettlementAction(id, approve)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success(approve ? "Payment approved" : "Payment declined")
-    router.refresh()
-  }
-
-  async function cancel(id: string) {
-    const result = await cancelSettlementAction(id)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    toast.success("Request cancelled")
-    router.refresh()
+  function cancel(id: string) {
+    resolver.run(() => cancelSettlementAction(id), { success: "Request cancelled" })
   }
 
   const incoming = group.settlements.filter((item) => item.status === "pending" && item.toUserId === user.id)
@@ -109,8 +94,8 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
       {others.length === 0 ? (
         <p className="mt-8 text-sm text-muted-foreground">Invite someone before you can settle.</p>
       ) : (
-        <form onSubmit={(event) => void submit(event)} className="mt-6 space-y-5">
-          <div className="flex gap-2 overflow-x-auto pb-1">
+        <form onSubmit={submit} className="mt-6 space-y-5">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
             {others.map((member) => (
               <button
                 key={member.id}
@@ -178,7 +163,7 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
           ) : (
             <p className="text-sm text-muted-foreground">Approval locks expenses through {formatDay(upToDate)}.</p>
           )}
-          <Button type="submit" size="xl" className="w-full" disabled={saving}>
+          <Button type="submit" size="xl" className="w-full" pending={saving}>
             {saving ? "Sending…" : "Request approval"}
           </Button>
         </form>
@@ -195,10 +180,10 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
                   <p className="font-medium">{from?.displayName} recorded {formatINR(item.amountPaise)}</p>
                   <p className="mt-1 text-sm text-muted-foreground">Through {formatDay(item.upToDate)}.</p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button variant="outline" className="h-11 rounded-[12px]" onClick={() => void resolve(item.id, false)}>
+                    <Button variant="outline" className="h-11 rounded-[12px]" disabled={resolver.pending} onClick={() => resolve(item.id, false)}>
                       Reject
                     </Button>
-                    <Button className="h-11 rounded-[12px]" onClick={() => void resolve(item.id, true)}>
+                    <Button className="h-11 rounded-[12px]" pending={resolver.pending} onClick={() => resolve(item.id, true)}>
                       Approve
                     </Button>
                   </div>
@@ -238,7 +223,7 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
                     </div>
                   </div>
                   {mine ? (
-                    <button type="button" onClick={() => void cancel(item.id)} className="mt-2 text-xs font-medium text-muted-foreground underline-offset-2 hover:underline">
+                    <button type="button" disabled={resolver.pending} onClick={() => cancel(item.id)} className="mt-2 text-xs font-medium text-muted-foreground underline-offset-2 hover:underline">
                       Cancel request
                     </button>
                   ) : null}

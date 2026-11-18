@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeftIcon, ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
+import { ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
+import { BackLink } from "@/components/back-link"
 import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseDetail } from "@/components/expense-detail"
 import { ExpenseFilterBar } from "@/components/expense-filters"
@@ -42,6 +43,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const [openExpenseId, setOpenExpenseId] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
+  const [membersOpen, setMembersOpen] = useState(false)
   const [invite, setInvite] = useState<{ code: string; expiresAt: string } | null>(null)
   const [groupName, setGroupName] = useState(group.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -115,12 +117,9 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   return (
     <div>
       <header className="sticky top-0 z-20 bg-background/70 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl md:static md:bg-transparent md:px-0 md:pt-6 md:pb-6 md:backdrop-blur-none">
-        <div className="flex items-center justify-between md:hidden">
-          <Link href="/groups" className="flex size-11 items-center justify-center rounded-[12px] active:bg-muted">
-            <ArrowLeftIcon className="size-5" />
-            <span className="sr-only">Groups</span>
-          </Link>
-          <div className="flex items-center">
+        <div className="flex items-center justify-between">
+          <BackLink href="/groups" label="Groups" className="mb-0" />
+          <div className="flex items-center md:hidden">
             {isAdmin ? (
               <button
                 type="button"
@@ -143,21 +142,18 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
             ) : null}
           </div>
         </div>
-        <div className="md:flex md:items-end md:justify-between md:gap-6">
-          <div className="min-w-0">
-            <Link
-              href="/groups"
-              className="hidden items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground md:inline-flex"
+        <div className="mt-4 md:flex md:items-end md:justify-between md:gap-6">
+          <div className="flex min-w-0 items-center justify-between gap-3 md:justify-start md:gap-4">
+            <h1 className="min-w-0 truncate text-[1.75rem] font-semibold tracking-tight md:text-[2.1rem]">{group.name}</h1>
+            <button
+              type="button"
+              onClick={() => setMembersOpen(true)}
+              aria-label={`${group.members.length} members. Show list`}
+              aria-haspopup="dialog"
+              className="shrink-0 rounded-full p-0.5 transition hover:bg-muted active:scale-[0.98]"
             >
-              <ArrowLeftIcon className="size-4" /> Groups
-            </Link>
-            <h1 className="mt-1 truncate text-[1.75rem] font-semibold tracking-tight md:text-[2.1rem]">{group.name}</h1>
-            <div className="mt-2 flex items-center gap-2">
-              <PersonStack members={group.members} />
-              <p className="truncate text-sm text-muted-foreground">
-                {group.members.map((member) => member.displayName.split(" ")[0]).join(", ")}
-              </p>
-            </div>
+              <PersonStack members={group.members} max={4} size="sm" />
+            </button>
           </div>
           <div className="hidden shrink-0 items-center gap-2 md:flex">
             {isAdmin ? (
@@ -285,6 +281,31 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
             </Button>
           </div>
         </div>
+      </AppSheet>
+
+      <AppSheet
+        open={membersOpen}
+        onOpenChange={setMembersOpen}
+        title="Members"
+        description={`${group.members.length} ${group.members.length === 1 ? "person" : "people"} in ${group.name}`}
+      >
+        <ul className="divide-y pb-2">
+          {group.members.map((member) => (
+            <li key={member.id} className="flex items-center gap-3 py-3">
+              <Person id={member.id} name={member.displayName} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">
+                  {member.displayName}
+                  {member.id === user.id ? <span className="ml-1.5 text-sm font-normal text-muted-foreground">(You)</span> : null}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+              </div>
+              {member.role === "admin" ? (
+                <span className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-foreground">Admin</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       </AppSheet>
 
       <AppSheet open={manageOpen} onOpenChange={setManageOpen} title="Group settings">
@@ -439,7 +460,7 @@ function ExpenseList({
         const payer = group.members.find((member) => member.id === expense.payerId)?.displayName ?? "Someone"
         return (
           <div key={expense.id}>
-            {showMonth ? <p className="px-1 pt-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">{month}</p> : null}
+            {showMonth ? <p className={cn("px-1 pb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase", index === 0 ? "pt-1" : "pt-5")}>{month}</p> : null}
             <button
               type="button"
               onClick={() => onOpen(expense)}

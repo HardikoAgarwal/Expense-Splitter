@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ReceiptTextIcon } from "lucide-react"
+import { ChevronLeftIcon, ChevronRightIcon, ReceiptTextIcon } from "lucide-react"
 
+import { BackLink } from "@/components/back-link"
 import { CategoryIcon } from "@/components/category-icon"
 import { Person } from "@/components/person"
 import { categoryColor, categoryLabel } from "@/lib/categories"
@@ -15,6 +16,7 @@ export function SummaryView({
   title,
   eyebrow,
   backHref,
+  backLabel,
   basePath,
   expenses,
   people,
@@ -25,6 +27,7 @@ export function SummaryView({
   title: string
   eyebrow: string
   backHref?: string
+  backLabel?: string
   /** Page path; the month is kept in ?month= so a refresh or share lands on the same month. */
   basePath: string
   expenses: SummaryExpense[]
@@ -54,12 +57,9 @@ export function SummaryView({
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
           {backHref ? (
-            <Link
-              href={backHref}
-              className="-ml-2 inline-flex h-10 items-center gap-1 rounded-[12px] px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeftIcon className="size-4" /> Back
-            </Link>
+            <div>
+              <BackLink href={backHref} label={backLabel ?? "Back"} />
+            </div>
           ) : null}
           <p className="text-sm font-medium tracking-[0.18em] text-primary uppercase">{eyebrow}</p>
           <h1 className="mt-1 truncate text-[1.75rem] font-semibold tracking-tight md:text-[2.1rem]">{title}</h1>

@@ -299,7 +299,7 @@ function ExpenseForm({
             </div>
 
             <Field label="Category">
-              <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
+              <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
                 {CATEGORIES.map((item) => {
                   const active = category === item.id
                   return (

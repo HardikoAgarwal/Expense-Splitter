@@ -207,3 +207,11 @@
     radial-gradient(120% 90% at 100% 0%, oklch(0.68 0.12 40 / 0.45), transparent 46%),
     linear-gradient(155deg, oklch(0.54 0.14 32) 0%, oklch(0.38 0.1 24) 100%);
 }
+/* Scrollable rows (chips, tabs) without a visible scrollbar. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

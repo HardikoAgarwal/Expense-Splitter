@@ -20,6 +20,7 @@ export default async function GroupSummaryPage({
       eyebrow="Monthly summary"
       title={group.name}
       backHref={`/groups/${group.id}`}
+      backLabel={group.name}
       basePath={`/groups/${group.id}/summary`}
       expenses={group.expenses}
       people={people}

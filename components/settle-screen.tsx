@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import Link from "next/link"
 import { QRCodeSVG } from "qrcode.react"
-import { ArrowLeftIcon, CheckIcon, CircleCheckIcon, CopyIcon, SmartphoneIcon } from "lucide-react"
+import { CheckIcon, CircleCheckIcon, CopyIcon, SmartphoneIcon } from "lucide-react"
 import { toast } from "sonner"
 
+import { BackLink } from "@/components/back-link"
 import { Field, FieldLabel, SECTION_TITLE, SectionTitle } from "@/components/field"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
@@ -133,13 +133,10 @@ export function SettleScreen({
 
   return (
     <div className="px-4 pt-[max(0.6rem,env(safe-area-inset-top))] pb-8 md:px-0 md:pt-6">
-      <Link
-        href={`/groups/${group.id}`}
-        className="-ml-2 inline-flex h-10 items-center gap-1 rounded-[12px] px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeftIcon className="size-4" /> {group.name}
-      </Link>
-      <h1 className="mt-1 text-[1.75rem] font-semibold tracking-tight">Settle up</h1>
+      <div>
+        <BackLink href={`/groups/${group.id}`} label={group.name} />
+      </div>
+      <h1 className="text-[1.75rem] font-semibold tracking-tight">Settle up</h1>
 
       {others.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">Invite someone before you can settle.</p>

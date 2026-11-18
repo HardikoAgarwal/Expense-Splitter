@@ -21,21 +21,35 @@ export function Person({
   )
 }
 
-export function PersonStack({ members }: { members: Member[] }) {
-  const shown = members.slice(0, 3)
+export function PersonStack({
+  members,
+  max = 3,
+  size = "default",
+}: {
+  members: Member[]
+  max?: number
+  size?: "sm" | "default"
+}) {
+  const shown = members.slice(0, max)
   const extra = members.length - shown.length
+  const dot = size === "sm" ? "size-9 text-[12px]" : "size-11 text-[13px]"
   return (
-    <div className="flex items-center -space-x-1.5">
+    <div className="flex items-center -space-x-2">
       {shown.map((member) => (
         <Person
           key={member.id}
           id={member.id}
           name={member.displayName}
-          className="size-11 text-[13px] tracking-tight ring-2 ring-background after:hidden"
+          className={cn(dot, "tracking-tight ring-2 ring-background after:hidden")}
         />
       ))}
       {extra > 0 ? (
-        <div className="relative z-10 flex size-11 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground ring-2 ring-background">
+        <div
+          className={cn(
+            dot,
+            "relative z-10 flex items-center justify-center rounded-full bg-muted font-semibold text-muted-foreground ring-2 ring-background",
+          )}
+        >
           +{extra}
         </div>
       ) : null}

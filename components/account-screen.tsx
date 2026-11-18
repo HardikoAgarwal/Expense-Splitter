@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useSyncExternalStore } from "react"
+import { useState } from "react"
 import {
   ChevronRightIcon,
   EyeIcon,
@@ -8,15 +8,11 @@ import {
   KeyRoundIcon,
   LogOutIcon,
   MailIcon,
-  MonitorIcon,
-  MoonIcon,
   PencilIcon,
   ShieldCheckIcon,
-  SunIcon,
   WalletIcon,
   UserRoundIcon,
 } from "lucide-react"
-import { useTheme } from "next-themes"
 
 import { ManageUsers } from "@/components/admin-screen"
 import { AppSheet } from "@/components/app-sheet"
@@ -24,6 +20,14 @@ import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
 import { PushToggle } from "@/components/push-toggle"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { FIELD, FIELD_LABEL, FIELDS, SectionTitle } from "@/components/field"
 import { signOutAction, updateNameAction, updatePasswordAction, updateUpiAction } from "@/lib/actions"
@@ -143,6 +147,8 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
   const [passwordOpen, setPasswordOpen] = useState(false)
   const signingOut = useAction()
 
+  const [signOutOpen, setSignOutOpen] = useState(false)
+
   function signOut() {
     signingOut.run(() => signOutAction(), { navigate: "/login", replace: true })
   }
@@ -181,19 +187,14 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
         />
       </SettingsGroup>
 
-      <SettingsGroup title="Appearance">
-        <div className="p-3">
-          <ThemePicker />
-        </div>
-      </SettingsGroup>
-
       {user.demo ? <Notice title="Demo mode">Local ledger. Sign in as the other roommate to approve a payment.</Notice> : null}
 
       <SettingsGroup>
         <button
           type="button"
-          onClick={signOut}
+          onClick={() => setSignOutOpen(true)}
           disabled={signingOut.pending}
+          aria-haspopup="dialog"
           className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-negative transition hover:bg-negative/5 disabled:opacity-60"
         >
           <span className="flex size-9 items-center justify-center rounded-[10px] bg-negative/10 [&_svg]:size-4">
@@ -206,6 +207,34 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
       <EditNameDialog user={user} open={nameOpen} onOpenChange={setNameOpen} />
       <EditUpiDialog upiId={upiId} open={upiOpen} onOpenChange={setUpiOpen} />
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+      <Dialog open={signOutOpen} onOpenChange={(open) => !signingOut.pending && setSignOutOpen(open)}>
+        <DialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-[20px]">
+          <DialogHeader>
+            <DialogTitle>Sign out of Hissa?</DialogTitle>
+            <DialogDescription>You&apos;ll need your email and password to sign back in on this device.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="grid grid-cols-2 gap-2 bg-transparent sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 rounded-[12px]"
+              disabled={signingOut.pending}
+              onClick={() => setSignOutOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-11 rounded-[12px] bg-negative text-white hover:bg-negative/90 focus-visible:ring-negative/30 dark:bg-negative dark:text-white"
+              pending={signingOut.pending}
+              onClick={signOut}
+            >
+              Sign out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -252,43 +281,6 @@ function SettingsRow({
     <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/60">
       {body}
     </button>
-  )
-}
-
-function ThemePicker() {
-  const { theme, setTheme } = useTheme()
-  // The theme is only known in the browser; render it unselected on the server to avoid a hydration mismatch.
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  )
-  const current = mounted ? theme : undefined
-  return (
-    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1 rounded-[12px] bg-muted p-1">
-      {(
-        [
-          ["light", "Light", <SunIcon key="l" />],
-          ["dark", "Dark", <MoonIcon key="d" />],
-          ["system", "System", <MonitorIcon key="s" />],
-        ] as const
-      ).map(([value, label, icon]) => (
-        <button
-          key={value}
-          type="button"
-          role="radio"
-          aria-checked={current === value}
-          onClick={() => setTheme(value)}
-          className={cn(
-            "flex h-10 items-center justify-center gap-1.5 rounded-[10px] text-sm font-semibold transition [&_svg]:size-4",
-            current === value ? "bg-card shadow-sm" : "text-muted-foreground",
-          )}
-        >
-          {icon}
-          {label}
-        </button>
-      ))}
-    </div>
   )
 }
 

@@ -31,7 +31,7 @@ export function WelcomeScreen({ token }: { token: string }) {
       <Mark className="size-12" />
       <h1 className="mt-6 text-3xl font-semibold tracking-tight">Set your password</h1>
       <p className="mt-2 text-sm text-muted-foreground">Choose a password for this account.</p>
-      <form onSubmit={submit} className="mt-6 space-y-3">
+      <form onSubmit={submit} className="mt-6 space-y-4">
         <Input
           type="password"
           value={password}

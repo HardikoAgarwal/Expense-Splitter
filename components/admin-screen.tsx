@@ -8,6 +8,7 @@ import { Person } from "@/components/person"
 import { MessagePreview, ShareActions } from "@/components/share-actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FIELD, FIELD_LABEL, FIELDS } from "@/components/field"
 import { createAccountAction, removeUserAction, setUserDisabledAction } from "@/lib/actions"
 import { accountInviteMessage, appBaseUrl } from "@/lib/messages"
 import type { AppUser, CreatedAccount, SessionUser } from "@/lib/types"
@@ -155,9 +156,9 @@ export function ManageUsers({ user, people }: { user: SessionUser; people: AppUs
           </Button>
         }
       >
-        <form id="add-user" onSubmit={create} className="space-y-4 pb-2">
-          <div className="space-y-1.5">
-            <label htmlFor="new-user-name" className="text-sm font-medium">
+        <form id="add-user" onSubmit={create} className={cn(FIELDS, "pb-2")}>
+          <div className={FIELD}>
+            <label htmlFor="new-user-name" className={FIELD_LABEL}>
               Name
             </label>
             <Input
@@ -169,8 +170,8 @@ export function ManageUsers({ user, people }: { user: SessionUser; people: AppUs
               className="h-12 rounded-[12px] px-3.5 text-base"
             />
           </div>
-          <div className="space-y-1.5">
-            <label htmlFor="new-user-email" className="text-sm font-medium">
+          <div className={FIELD}>
+            <label htmlFor="new-user-email" className={FIELD_LABEL}>
               Email
             </label>
             <Input

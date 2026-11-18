@@ -6,6 +6,7 @@ import { QRCodeSVG } from "qrcode.react"
 import { ArrowLeftIcon, CheckIcon, CircleCheckIcon, CopyIcon, SmartphoneIcon } from "lucide-react"
 import { toast } from "sonner"
 
+import { Field, FieldLabel, SECTION_TITLE, SectionTitle } from "@/components/field"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
 import { Section } from "@/components/section"
@@ -175,102 +176,94 @@ export function SettleScreen({
               onResolve={resolve}
             />
           ) : (
-            <form onSubmit={submit} className="mt-4 space-y-4" aria-label={`Pay ${firstName}`}>
-              <section className="divide-y overflow-hidden rounded-[16px] bg-card ring-1 ring-border">
-                <div className="p-4">
-                  <label htmlFor="settle-date" className="mb-1.5 block text-sm font-medium">
-                    Expenses through
-                  </label>
-                  <Input
-                    id="settle-date"
-                    type="date"
-                    value={upToDate}
-                    max={todayISO()}
-                    onChange={(event) => {
-                      if (event.target.value) setUpToDate(event.target.value)
-                    }}
-                    className="h-12 rounded-[12px] px-3.5 text-base"
-                  />
-                </div>
+            <form onSubmit={submit} className="mt-6 space-y-7" aria-label={`Pay ${firstName}`}>
+              <Field>
+                <FieldLabel htmlFor="settle-date">Expenses through</FieldLabel>
+                <Input
+                  id="settle-date"
+                  type="date"
+                  value={upToDate}
+                  max={todayISO()}
+                  onChange={(event) => {
+                    if (event.target.value) setUpToDate(event.target.value)
+                  }}
+                  className="h-12 rounded-[12px] px-3.5 text-base"
+                />
+              </Field>
 
-                <div className="p-4" aria-live="polite">
-                  {!breakdown ? (
-                    <p className="text-sm text-muted-foreground">Working out the balance…</p>
-                  ) : breakdown.direction === "i-owe" ? (
-                    <>
-                      <p className="text-sm text-muted-foreground">Balance through {formatDay(upToDate)}</p>
-                      <p className="mt-0.5 text-lg font-medium">
-                        You owe {firstName} <span className="money text-negative">{formatINR(breakdown.owedPaise)}</span>
-                      </p>
-                      {breakdown.pendingPaise > 0 ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {formatINR(breakdown.pendingPaise)} you sent is waiting for approval
-                          {breakdown.remainingPaise > 0
-                            ? `, so ${formatINR(breakdown.remainingPaise)} is left to pay.`
-                            : `. That covers it; it settles once ${firstName} approves.`}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : (
+              <div aria-live="polite">
+                <p className={cn(SECTION_TITLE, "mb-2.5")}>Balance through {formatDay(upToDate)}</p>
+                {!breakdown ? (
+                  <p className="text-sm text-muted-foreground">Working out the balance…</p>
+                ) : breakdown.direction === "i-owe" ? (
+                  <>
                     <p className="text-lg font-medium">
-                      You and {firstName} are square through {formatDay(upToDate)}
+                      You owe {firstName} <span className="money text-negative">{formatINR(breakdown.owedPaise)}</span>
                     </p>
-                  )}
-                </div>
+                    {breakdown.pendingPaise > 0 ? (
+                      <p className="mt-1.5 text-sm text-muted-foreground">
+                        {formatINR(breakdown.pendingPaise)} you sent is waiting for approval
+                        {breakdown.remainingPaise > 0
+                          ? `, so ${formatINR(breakdown.remainingPaise)} is left to pay.`
+                          : `. That covers it; it settles once ${firstName} approves.`}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-lg font-medium">You and {firstName} are square.</p>
+                )}
+              </div>
 
-                {canPay ? (
-                  <div className="p-4">
-                    <div className="mb-1.5 flex items-end justify-between gap-2">
-                      <label htmlFor="settle-amount" className="text-sm font-medium">
-                        Amount to be paid
-                      </label>
-                      {enteredPaise !== remaining ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAmount(paiseToInput(remaining))
-                            setUpiOpened(false)
-                          }}
-                          className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground hover:bg-accent/70"
-                        >
-                          Full amount {formatINR(remaining)}
-                        </button>
-                      ) : null}
-                    </div>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-lg text-muted-foreground">₹</span>
-                      <Input
-                        id="settle-amount"
-                        inputMode="decimal"
-                        value={amount}
-                        placeholder="0"
-                        onChange={(event) => {
-                          setAmount(event.target.value.replace(/[^\d.]/g, ""))
+              {canPay ? (
+                <Field>
+                  <div className="flex items-center justify-between gap-2">
+                    <FieldLabel htmlFor="settle-amount">Amount to be paid</FieldLabel>
+                    {enteredPaise !== remaining ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAmount(paiseToInput(remaining))
                           setUpiOpened(false)
                         }}
-                        aria-describedby="settle-amount-result"
-                        className="money h-14 rounded-[12px] pr-3 pl-8 text-2xl"
-                      />
-                    </div>
-                    <p id="settle-amount-result" aria-live="polite" className="mt-2 flex items-center justify-between gap-2 text-sm">
-                      {enteredPaise <= 0 ? (
-                        <span className="text-muted-foreground">Enter the amount you&apos;re paying.</span>
-                      ) : enteredPaise < remaining ? (
-                        <>
-                          <span className="text-muted-foreground">Remaining after this</span>
-                          <span className="money font-semibold">{formatINR(remaining - enteredPaise)}</span>
-                        </>
-                      ) : enteredPaise === remaining ? (
-                        <span className="flex items-center gap-1.5 font-medium text-positive">
-                          <CircleCheckIcon className="size-4" /> Settles fully
-                        </span>
-                      ) : (
-                        <span className="text-warning">That&apos;s {formatINR(enteredPaise - remaining)} more than you owe.</span>
-                      )}
-                    </p>
+                        className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground hover:bg-accent/70"
+                      >
+                        Full amount {formatINR(remaining)}
+                      </button>
+                    ) : null}
                   </div>
-                ) : null}
-              </section>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-lg text-muted-foreground">₹</span>
+                    <Input
+                      id="settle-amount"
+                      inputMode="decimal"
+                      value={amount}
+                      placeholder="0"
+                      onChange={(event) => {
+                        setAmount(event.target.value.replace(/[^\d.]/g, ""))
+                        setUpiOpened(false)
+                      }}
+                      aria-describedby="settle-amount-result"
+                      className="money h-14 rounded-[12px] pr-3 pl-8 text-2xl"
+                    />
+                  </div>
+                  <p id="settle-amount-result" aria-live="polite" className="flex items-center justify-between gap-2 text-sm">
+                    {enteredPaise <= 0 ? (
+                      <span className="text-muted-foreground">Enter the amount you&apos;re paying.</span>
+                    ) : enteredPaise < remaining ? (
+                      <>
+                        <span className="text-muted-foreground">Remaining after this</span>
+                        <span className="money font-semibold">{formatINR(remaining - enteredPaise)}</span>
+                      </>
+                    ) : enteredPaise === remaining ? (
+                      <span className="flex items-center gap-1.5 font-medium text-positive">
+                        <CircleCheckIcon className="size-4" /> Settles fully
+                      </span>
+                    ) : (
+                      <span className="text-warning">That&apos;s {formatINR(enteredPaise - remaining)} more than you owe.</span>
+                    )}
+                  </p>
+                </Field>
+              ) : null}
 
               {disputed.length > 0 ? (
                 <Notice tone="warning" title="Disputed in this range">
@@ -338,11 +331,10 @@ export function SettleScreen({
       )}
 
       {otherRequests.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Needs you</h2>
-          <div className="mt-3 space-y-3">
+        <Section title="Needs you">
+          <div className="divide-y border-y">
             {otherRequests.map((item) => (
-              <RequestCard
+              <RequestRow
                 key={item.id}
                 name={group.members.find((member) => member.id === item.fromUserId)?.displayName.split(" ")[0] ?? "Someone"}
                 request={item}
@@ -351,14 +343,14 @@ export function SettleScreen({
               />
             ))}
           </div>
-        </section>
+        </Section>
       ) : null}
 
       <Section title="History">
-        <div className="space-y-2">
-          {group.settlements.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No settlements yet.</p>
-          ) : (
+        {group.settlements.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No settlements yet.</p>
+        ) : (
+          <div className="divide-y border-y">
             <ShowList
               items={group.settlements}
               limit={4}
@@ -367,48 +359,46 @@ export function SettleScreen({
                 const to = group.members.find((member) => member.id === item.toUserId)?.displayName.split(" ")[0]
                 const mine = item.createdBy === user.id && item.status === "pending"
                 return (
-                  <div key={item.id} className="rounded-[16px] bg-card px-4 py-3 ring-1 ring-border">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium">
-                          {item.fromUserId === user.id ? "You" : from} paid {item.toUserId === user.id ? "you" : to}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Through {formatDay(item.upToDate)}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="money text-lg">{formatINR(item.amountPaise)}</p>
-                        <p
-                          className={cn(
-                            "text-xs font-medium",
-                            item.status === "approved" ? "text-positive" : item.status === "rejected" ? "text-negative" : "text-warning",
-                          )}
+                  <div key={item.id} className="flex items-start justify-between gap-3 py-3.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        {item.fromUserId === user.id ? "You" : from} paid {item.toUserId === user.id ? "you" : to}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">Through {formatDay(item.upToDate)}</p>
+                      {mine ? (
+                        <button
+                          type="button"
+                          disabled={resolver.pending}
+                          onClick={() => cancel(item.id)}
+                          className="mt-1.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
                         >
-                          {item.status === "pending" ? "Waiting for approval" : item.status === "approved" ? "Approved" : "Declined"}
-                        </p>
-                      </div>
+                          Cancel request
+                        </button>
+                      ) : null}
                     </div>
-                    {mine ? (
-                      <button
-                        type="button"
-                        disabled={resolver.pending}
-                        onClick={() => cancel(item.id)}
-                        className="mt-2 text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
+                    <div className="text-right">
+                      <p className="money text-lg">{formatINR(item.amountPaise)}</p>
+                      <p
+                        className={cn(
+                          "text-xs font-medium",
+                          item.status === "approved" ? "text-positive" : item.status === "rejected" ? "text-negative" : "text-warning",
+                        )}
                       >
-                        Cancel request
-                      </button>
-                    ) : null}
+                        {item.status === "pending" ? "Waiting for approval" : item.status === "approved" ? "Approved" : "Declined"}
+                      </p>
+                    </div>
                   </div>
                 )
               }}
             />
-          )}
-        </div>
+          </div>
+        )}
       </Section>
     </div>
   )
 }
 
-function RequestCard({
+function RequestRow({
   name,
   request,
   busy,
@@ -420,12 +410,12 @@ function RequestCard({
   onResolve: (id: string, approve: boolean) => void
 }) {
   return (
-    <article className="rounded-[16px] bg-card p-4 ring-1 ring-border">
-      <p className="font-medium">
-        {name} says they paid you <span className="money">{formatINR(request.amountPaise)}</span>
+    <article className="py-4">
+      <p className="text-lg font-medium">
+        {name} says they paid you <span className="money text-positive">{formatINR(request.amountPaise)}</span>
       </p>
       <p className="mt-1 text-sm text-muted-foreground">Covers expenses through {formatDay(request.upToDate)}. Check you received it.</p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:max-w-sm">
         <Button variant="outline" size="lg" disabled={busy} onClick={() => onResolve(request.id, false)}>
           Not received
         </Button>
@@ -455,25 +445,25 @@ function ApproverView({
 }) {
   if (requests.length === 0) {
     return (
-      <section className="mt-4 rounded-[16px] bg-card p-4 ring-1 ring-border">
+      <section className="mt-6">
         <p className="text-lg font-medium">
           {name} owes you <span className="money text-positive">{formatINR(owedPaise)}</span>
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1.5 text-sm text-muted-foreground">
           {name} records the payment from their account. You&apos;ll approve it here.
         </p>
       </section>
     )
   }
   return (
-    <section className="mt-4" aria-label="Payments to approve">
-      <h2 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Needs your approval</h2>
-      <div className="mt-3 space-y-3">
+    <section className="mt-6" aria-label="Payments to approve">
+      <SectionTitle>Needs your approval</SectionTitle>
+      <div className="divide-y">
         {requests.map((item) => (
-          <RequestCard key={item.id} name={name} request={item} busy={busy} onResolve={onResolve} />
+          <RequestRow key={item.id} name={name} request={item} busy={busy} onResolve={onResolve} />
         ))}
       </div>
-      <p className="mt-3 px-1 text-sm text-muted-foreground">
+      <p className="mt-1 border-t pt-4 text-sm text-muted-foreground">
         {remainingPaise > 0 ? (
           <>
             {name} still owes you <span className="money font-semibold text-foreground">{formatINR(remainingPaise)}</span> after{" "}

@@ -6,6 +6,7 @@ import { SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react"
 import { AppSheet } from "@/components/app-sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FIELD } from "@/components/field"
 import { CATEGORIES, categoryLabel } from "@/lib/categories"
 import { activeFilterCount, EMPTY_FILTERS, type ExpenseFilters } from "@/lib/expense-filters"
 import { formatDay } from "@/lib/money"
@@ -161,7 +162,7 @@ export function ExpenseFilterBar({
           </div>
         }
       >
-        <div className="grid grid-cols-2 gap-3 pb-2 [&>*:nth-child(-n+3)]:col-span-2">{fields}</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-5 pb-2 [&>*:nth-child(-n+3)]:col-span-2">{fields}</div>
       </AppSheet>
     </div>
   )
@@ -169,8 +170,8 @@ export function ExpenseFilterBar({
 
 function Field({ label, id, children, className }: { label: string; id: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("space-y-1", className)}>
-      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <div className={cn(FIELD, className)}>
+      <label htmlFor={id} className="block text-xs leading-none font-medium text-muted-foreground">
         {label}
       </label>
       {children}

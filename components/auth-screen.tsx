@@ -59,7 +59,7 @@ export function AuthScreen({ next, demo }: { next: string; demo: boolean }) {
         <p className="mt-3 text-sm text-muted-foreground">Invite only. Sign in with the account your admin made for you.</p>
       </div>
 
-      <form onSubmit={submit} className="mt-2 space-y-3">
+      <form onSubmit={submit} className="mt-2 space-y-4">
         <label htmlFor="login-email" className="sr-only">
           Email
         </label>

@@ -61,7 +61,7 @@ export function ForgotPasswordScreen({ demo }: { demo: boolean }) {
           </Link>
         </div>
       ) : (
-        <form onSubmit={(event) => void submit(event)} className="mt-2 space-y-3">
+        <form onSubmit={(event) => void submit(event)} className="mt-2 space-y-4">
           <Input
             type="email"
             value={email}

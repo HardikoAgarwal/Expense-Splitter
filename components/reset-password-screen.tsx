@@ -53,7 +53,7 @@ export function ResetPasswordScreen({ signedIn }: { signedIn: boolean }) {
           </Link>
         </div>
       ) : (
-        <form onSubmit={submit} className="mt-2 space-y-3">
+        <form onSubmit={submit} className="mt-2 space-y-4">
           <Input
             type="password"
             value={password}

@@ -25,6 +25,7 @@ import { Person } from "@/components/person"
 import { PushToggle } from "@/components/push-toggle"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FIELD, FIELD_LABEL, FIELDS, SectionTitle } from "@/components/field"
 import { signOutAction, updateNameAction, updatePasswordAction, updateUpiAction } from "@/lib/actions"
 import type { AppUser, SessionUser } from "@/lib/types"
 import { normalizeUpi, upiError } from "@/lib/upi"
@@ -147,7 +148,7 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <SettingsGroup title="Account details">
         <SettingsRow icon={<UserRoundIcon />} label="Name" value={user.displayName} onClick={() => setNameOpen(true)} actionIcon={<PencilIcon />} />
         <SettingsRow icon={<MailIcon />} label="Email" value={user.email} hint="Ask the admin to change it" />
@@ -212,7 +213,7 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
 function SettingsGroup({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <section>
-      {title ? <h2 className="mb-2 px-1 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">{title}</h2> : null}
+      {title ? <SectionTitle className="px-1">{title}</SectionTitle> : null}
       <div className="divide-y overflow-hidden rounded-[16px] bg-card ring-1 ring-border">{children}</div>
     </section>
   )
@@ -333,8 +334,8 @@ function EditNameDialog({
         </Button>
       }
     >
-      <form id="edit-name" onSubmit={save} className="space-y-1.5 pb-2">
-        <label htmlFor="display-name" className="text-sm font-medium">
+      <form id="edit-name" onSubmit={save} className={cn(FIELD, "pb-2")}>
+        <label htmlFor="display-name" className={FIELD_LABEL}>
           Name
         </label>
         <Input
@@ -414,8 +415,8 @@ function EditUpiDialog({
         </div>
       }
     >
-      <form id="edit-upi" onSubmit={save} className="space-y-1.5 pb-2">
-        <label htmlFor="upi-id" className="text-sm font-medium">
+      <form id="edit-upi" onSubmit={save} className={cn(FIELD, "pb-2")}>
+        <label htmlFor="upi-id" className={FIELD_LABEL}>
           UPI ID
         </label>
         <Input
@@ -496,10 +497,10 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         </Button>
       }
     >
-      <form id="change-password" onSubmit={save} className="space-y-4 pb-2">
-        <div className="space-y-1.5">
+      <form id="change-password" onSubmit={save} className={cn(FIELDS, "pb-2")}>
+        <div className={FIELD}>
           <div className="flex items-center justify-between">
-            <label htmlFor="new-password" className="text-sm font-medium">
+            <label htmlFor="new-password" className={FIELD_LABEL}>
               New password
             </label>
             <button
@@ -522,7 +523,7 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             aria-describedby="password-strength"
             className="h-12 rounded-[12px] px-3.5 text-base"
           />
-          <div id="password-strength" aria-live="polite" className="space-y-1">
+          <div id="password-strength" aria-live="polite" className="space-y-1.5">
             <div className="grid grid-cols-3 gap-1" aria-hidden>
               {[1, 2, 3].map((level) => (
                 <span
@@ -540,8 +541,8 @@ function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             </p>
           </div>
         </div>
-        <div className="space-y-1.5">
-          <label htmlFor="confirm-password" className="text-sm font-medium">
+        <div className={FIELD}>
+          <label htmlFor="confirm-password" className={FIELD_LABEL}>
             Confirm new password
           </label>
           <Input

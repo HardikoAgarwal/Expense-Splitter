@@ -9,6 +9,7 @@ import { AppSheet } from "@/components/app-sheet"
 import { Person, PersonStack } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FIELD, FIELD_LABEL, SECTION_TITLE } from "@/components/field"
 import { createGroupAction, joinGroupAction } from "@/lib/actions"
 import { formatINR } from "@/lib/money"
 import { parseJoinCode } from "@/lib/messages"
@@ -135,7 +136,7 @@ export function GroupsHome({
 
       <section className="mt-8" aria-labelledby="groups-heading">
         {groups.length > 0 ? (
-          <h2 id="groups-heading" className="mb-3 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
+          <h2 id="groups-heading" className={cn(SECTION_TITLE, "mb-3")}>
             Your groups · {groups.length}
           </h2>
         ) : (
@@ -223,8 +224,8 @@ export function GroupsHome({
           </Button>
         }
       >
-        <form id="create-group" onSubmit={create} className="space-y-2 pb-2">
-          <label htmlFor="group-name" className="text-sm font-medium">
+        <form id="create-group" onSubmit={create} className={cn(FIELD, "pb-2")}>
+          <label htmlFor="group-name" className={FIELD_LABEL}>
             Group name
           </label>
           <Input
@@ -256,8 +257,8 @@ export function GroupsHome({
           </Button>
         }
       >
-        <form id="join-group" onSubmit={join} className="space-y-2 pb-2">
-          <label htmlFor="join-code" className="text-sm font-medium">
+        <form id="join-group" onSubmit={join} className={cn(FIELD, "pb-2")}>
+          <label htmlFor="join-code" className={FIELD_LABEL}>
             Invite code or link
           </label>
           <Input

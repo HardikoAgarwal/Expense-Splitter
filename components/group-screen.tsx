@@ -15,6 +15,7 @@ import { MessagePreview, ShareActions } from "@/components/share-actions"
 import { useExpense, useRegisterGroup } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FIELD, FIELD_LABEL, SECTION_TITLE } from "@/components/field"
 import {
   createInviteAction,
   deleteGroupAction,
@@ -211,7 +212,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
           <section className={cn(tab !== "expenses" && "hidden lg:block")} aria-labelledby="expenses-heading">
             <div className="mb-3 hidden items-baseline justify-between lg:flex">
-              <h2 id="expenses-heading" className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
+              <h2 id="expenses-heading" className={SECTION_TITLE}>
                 Expenses · {group.expenses.length}
               </h2>
             </div>
@@ -288,8 +289,8 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
       <AppSheet open={manageOpen} onOpenChange={setManageOpen} title="Group settings">
         <div className="space-y-6 pb-4">
-          <form className="space-y-2" onSubmit={rename}>
-            <label htmlFor="group-rename" className="text-sm font-medium">
+          <form className={FIELD} onSubmit={rename}>
+            <label htmlFor="group-rename" className={FIELD_LABEL}>
               Group name
             </label>
             <div className="flex gap-2">
@@ -311,7 +312,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
             </div>
           </form>
           <div className="space-y-3">
-            <h3 className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">Participants</h3>
+            <h3 className={SECTION_TITLE}>Participants</h3>
             {group.members.map((member) => (
               <div key={member.id} className="flex items-center gap-3">
                 <Person id={member.id} name={member.displayName} />
@@ -478,7 +479,7 @@ function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) 
   return (
     <div className="space-y-5">
       <section className="rounded-[16px] bg-card p-4 ring-1 ring-border">
-        <h2 className="text-sm font-medium tracking-wide text-muted-foreground uppercase">Who pays whom</h2>
+        <h2 className={SECTION_TITLE}>Who pays whom</h2>
         {group.debts.length === 0 ? (
           <p className="mt-3 text-sm">Everyone is square.</p>
         ) : (

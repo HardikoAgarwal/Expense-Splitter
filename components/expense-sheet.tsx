@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SECTION_TITLE } from "@/components/field"
 import { deleteExpenseAction, saveExpenseAction } from "@/lib/actions"
 import { CATEGORIES } from "@/lib/categories"
 import { splitEqually, validateShares } from "@/lib/ledger"
@@ -219,7 +220,7 @@ function ExpenseForm({
         )}
       </DialogHeader>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 pt-1 pb-3">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 pt-1 pb-3">
         {step === "split" ? (
           <SplitStep
             group={group}
@@ -524,7 +525,7 @@ function SplitStep({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</span>
+      <span className={cn(SECTION_TITLE, "mb-2.5 block")}>{label}</span>
       {children}
     </label>
   )

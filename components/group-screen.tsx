@@ -2,9 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ArrowLeftIcon, ChevronRightIcon, LockIcon, SettingsIcon, Share2Icon } from "lucide-react"
-import { toast } from "sonner"
+import { ArrowLeftIcon, ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { CategoryIcon } from "@/components/category-icon"
@@ -13,7 +11,8 @@ import { Notice } from "@/components/notice"
 import { Person, PersonStack } from "@/components/person"
 import { ShowList } from "@/components/show-list"
 import { ShareActions } from "@/components/share-actions"
-import { useExpense } from "@/components/shell"
+import { useExpense, useRegisterGroup } from "@/components/shell"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   createInviteAction,
@@ -28,92 +27,90 @@ import { categoryLabel } from "@/lib/categories"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
 import type { Debt, GroupDetail, Member, SessionUser } from "@/lib/types"
+import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
 export function GroupScreen({ group, user }: { group: GroupDetail; user: SessionUser }) {
   const { openExpense } = useExpense()
-  const router = useRouter()
+  useRegisterGroup(group)
   const [tab, setTab] = useState<"expenses" | "balances">("expenses")
   const [openExpenseId, setOpenExpenseId] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [invite, setInvite] = useState<{ code: string; expiresAt: string } | null>(null)
-  const [inviting, setInviting] = useState(false)
   const [groupName, setGroupName] = useState(group.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const inviting = useAction()
+  const managing = useAction()
   const isAdmin = group.myRole === "admin"
   const adminCount = group.members.filter((member) => member.role === "admin").length
   const month = monthStartISO(todayISO())
   const monthTotal = group.expenses
     .filter((expense) => expense.expenseDate.startsWith(month.slice(0, 7)))
     .reduce((sum, expense) => sum + expense.amountPaise, 0)
+  const disputedCount = group.expenses.filter((expense) => expense.disputed).length
 
-  async function invitePeople() {
+  function invitePeople() {
     setInviteOpen(true)
     if (invite) return
-    setInviting(true)
-    const result = await createInviteAction(group.id)
-    setInviting(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    setInvite(result.data)
+    inviting.run(() => createInviteAction(group.id), { onSuccess: setInvite })
   }
 
-  async function refreshInvite(regenerate = false) {
-    setInviting(true)
-    const result = regenerate ? await regenerateInviteAction(group.id) : await createInviteAction(group.id)
-    setInviting(false)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    setInvite(result.data)
+  function newCode() {
+    inviting.run(() => regenerateInviteAction(group.id), { onSuccess: setInvite, success: "New code ready" })
   }
 
-  async function revokeInvite() {
-    const result = await revokeInvitesAction(group.id)
-    if (!result.ok) {
-      toast.error(result.error)
-      return
-    }
-    setInvite(null)
-    toast.success("Invite revoked")
+  function revokeInvite() {
+    inviting.run(() => revokeInvitesAction(group.id), {
+      success: "Invite revoked",
+      onSuccess: () => setInvite(null),
+    })
   }
 
   const inviteText = invite
     ? groupInviteMessage({ group: group.name, appUrl: appBaseUrl(), code: invite.code })
     : ""
 
-  async function promote(member: Member) {
-    const result = await promoteMemberAction(group.id, member.id)
-    if (!result.ok) toast.error(result.error)
-    else {
-      toast.success(`${member.displayName.split(" ")[0]} is now an admin`)
-      router.refresh()
-    }
+  function promote(member: Member) {
+    managing.run(() => promoteMemberAction(group.id, member.id), {
+      success: `${member.displayName.split(" ")[0]} is now an admin`,
+    })
   }
 
-  async function removePerson(member: Member) {
-    const result = await removeMemberAction(group.id, member.id)
-    if (!result.ok) toast.error(result.error)
-    else {
-      toast.success("Removed")
-      router.refresh()
-    }
+  function removePerson(member: Member) {
+    managing.run(() => removeMemberAction(group.id, member.id), { success: "Removed" })
   }
 
-  async function removeGroup() {
-    const result = await deleteGroupAction(group.id)
-    if (!result.ok) toast.error(result.error)
-    else router.push("/groups")
+  function rename(event: React.FormEvent) {
+    event.preventDefault()
+    managing.run(() => renameGroupAction(group.id, groupName), { success: "Name updated" })
   }
+
+  function removeGroup() {
+    managing.run(() => deleteGroupAction(group.id), {
+      navigate: "/groups",
+      replace: true,
+      success: "Group deleted",
+    })
+  }
+
+  const summaryLink = (
+    <Link
+      href={`/groups/${group.id}/summary`}
+      className="flex items-center justify-between rounded-[16px] bg-card px-4 py-3.5 ring-1 ring-border transition hover:ring-primary/30"
+    >
+      <div>
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{formatMonth(month)}</p>
+        <p className="mt-0.5 font-medium">Group spent {formatINR(monthTotal)}</p>
+      </div>
+      <ChevronRightIcon className="size-5 text-muted-foreground" />
+    </Link>
+  )
 
   return (
     <div>
-      <header className="sticky top-0 z-20 bg-background/55 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl">
-        <div className="flex items-center justify-between">
+      <header className="sticky top-0 z-20 bg-background/70 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl md:static md:bg-transparent md:px-0 md:pt-6 md:pb-6 md:backdrop-blur-none">
+        <div className="flex items-center justify-between md:hidden">
           <Link href="/groups" className="flex size-11 items-center justify-center rounded-[12px] active:bg-muted">
             <ArrowLeftIcon className="size-5" />
             <span className="sr-only">Groups</span>
@@ -132,7 +129,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
             {isAdmin ? (
               <button
                 type="button"
-                onClick={() => void invitePeople()}
+                onClick={invitePeople}
                 className="flex size-11 items-center justify-center rounded-[12px] active:bg-muted"
               >
                 <Share2Icon className="size-5" />
@@ -141,54 +138,97 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
             ) : null}
           </div>
         </div>
-        <h1 className="mt-1 text-[1.75rem] font-semibold tracking-tight">{group.name}</h1>
-        <div className="mt-3 flex items-center gap-2">
-          <PersonStack members={group.members} />
-          <p className="truncate text-sm text-muted-foreground">
-            {group.members.map((member) => member.displayName.split(" ")[0]).join(", ")}
-          </p>
+        <div className="md:flex md:items-end md:justify-between md:gap-6">
+          <div className="min-w-0">
+            <Link
+              href="/groups"
+              className="hidden items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground md:inline-flex"
+            >
+              <ArrowLeftIcon className="size-4" /> Groups
+            </Link>
+            <h1 className="mt-1 truncate text-[1.75rem] font-semibold tracking-tight md:text-[2.1rem]">{group.name}</h1>
+            <div className="mt-2 flex items-center gap-2">
+              <PersonStack members={group.members} />
+              <p className="truncate text-sm text-muted-foreground">
+                {group.members.map((member) => member.displayName.split(" ")[0]).join(", ")}
+              </p>
+            </div>
+          </div>
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            {isAdmin ? (
+              <Button variant="ghost" size="lg" onClick={() => setManageOpen(true)} aria-label="Group settings">
+                <SettingsIcon />
+              </Button>
+            ) : null}
+            {isAdmin ? (
+              <Button variant="outline" size="lg" onClick={invitePeople}>
+                <Share2Icon /> Invite
+              </Button>
+            ) : null}
+            <Button variant="outline" size="lg" render={<Link href={`/groups/${group.id}/settle`} />} nativeButton={false}>
+              Settle up
+            </Button>
+            <Button size="lg" onClick={() => openExpense(group.id)}>
+              <PlusIcon /> Add expense
+            </Button>
+          </div>
         </div>
       </header>
 
-      <div className="space-y-6 px-4">
-        {group.expenses.some((expense) => expense.disputed) ? (
-          <Notice tone="warning" title={`${group.expenses.filter((expense) => expense.disputed).length} disputed`}>
-            Still counted in balances.
-          </Notice>
-        ) : null}
-        <BalanceHero group={group} userId={user.id} />
-        <Link
-          href={`/groups/${group.id}/summary`}
-          className="flex items-center justify-between rounded-[16px] bg-card px-4 py-3.5 ring-1 ring-border"
-        >
-          <div>
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{formatMonth(month)}</p>
-            <p className="mt-0.5 font-medium">Group spent {formatINR(monthTotal)}</p>
+      <div className="px-4 md:px-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-start lg:gap-8">
+        <div className="space-y-6">
+          {disputedCount > 0 ? (
+            <Notice tone="warning" title={`${disputedCount} disputed`}>
+              Still counted in balances.
+            </Notice>
+          ) : null}
+          <div className="space-y-6 lg:hidden">
+            <BalanceHero group={group} userId={user.id} />
+            {summaryLink}
           </div>
-          <ChevronRightIcon className="size-5 text-muted-foreground" />
-        </Link>
 
-        <div className="grid grid-cols-2 rounded-[12px] bg-muted p-1">
-          {(["expenses", "balances"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className={cn(
-                "h-11 rounded-[12px] text-sm font-semibold capitalize",
-                tab === value ? "bg-card shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              {value}
-            </button>
-          ))}
+          <div role="tablist" aria-label="Group view" className="grid grid-cols-2 rounded-[12px] bg-muted p-1 lg:hidden">
+            {(["expenses", "balances"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => setTab(value)}
+                className={cn(
+                  "h-11 rounded-[12px] text-sm font-semibold capitalize transition",
+                  tab === value ? "bg-card shadow-sm" : "text-muted-foreground",
+                )}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+
+          <section className={cn(tab !== "expenses" && "hidden lg:block")} aria-labelledby="expenses-heading">
+            <div className="mb-3 hidden items-baseline justify-between lg:flex">
+              <h2 id="expenses-heading" className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                Expenses · {group.expenses.length}
+              </h2>
+            </div>
+            <ExpenseList
+              group={group}
+              userId={user.id}
+              onOpen={(expense) => setOpenExpenseId(expense.id)}
+              onAdd={() => openExpense(group.id)}
+            />
+          </section>
+
+          <div className={cn("lg:hidden", tab !== "balances" && "hidden")}>
+            <BalanceList group={group} userId={user.id} />
+          </div>
         </div>
 
-        {tab === "expenses" ? (
-          <ExpenseList group={group} userId={user.id} onOpen={(expense) => setOpenExpenseId(expense.id)} />
-        ) : (
+        <aside className="hidden space-y-5 lg:sticky lg:top-6 lg:block" aria-label="Balances">
+          <BalanceHero group={group} userId={user.id} />
+          {summaryLink}
           <BalanceList group={group} userId={user.id} />
-        )}
+        </aside>
       </div>
 
       <ExpenseDetail
@@ -206,78 +246,86 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         title={`Invite to ${group.name}`}
-        description="Expires in 7 days."
+        description="Share this code. It expires in 7 days."
         footer={inviteText ? <ShareActions title={`Join ${group.name} on Hissa`} text={inviteText} /> : null}
       >
-        <div className="space-y-4 pb-2">
-          <p className="money text-center text-4xl tracking-[0.12em]">{inviting ? "····" : invite?.code}</p>
+        <div className="space-y-4 pb-2" aria-busy={inviting.pending}>
+          <p className="money text-center text-4xl tracking-[0.12em]">{inviting.pending && !invite ? "····" : invite?.code}</p>
           {inviteText ? <p className="rounded-[12px] bg-muted p-3 text-sm leading-6">{inviteText}</p> : null}
-          <div className="flex justify-center gap-4">
-            <button type="button" className="text-sm font-medium text-primary" disabled={inviting} onClick={() => void refreshInvite(true)}>
+          <div className="flex justify-center gap-2">
+            <Button variant="ghost" size="lg" className="text-primary" pending={inviting.pending} onClick={newCode}>
               New code
-            </button>
-            <button type="button" className="text-sm font-medium text-muted-foreground" disabled={!invite} onClick={() => void revokeInvite()}>
+            </Button>
+            <Button variant="ghost" size="lg" className="text-muted-foreground" disabled={!invite || inviting.pending} onClick={revokeInvite}>
               Revoke
-            </button>
+            </Button>
           </div>
         </div>
       </AppSheet>
 
       <AppSheet open={manageOpen} onOpenChange={setManageOpen} title="Group settings">
         <div className="space-y-6 pb-4">
-            <form
-              className="space-y-2"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void renameGroupAction(group.id, groupName).then((result) => {
-                  if (!result.ok) toast.error(result.error)
-                  else {
-                    toast.success("Name updated")
-                    router.refresh()
-                  }
-                })
-              }}
-            >
+          <form className="space-y-2" onSubmit={rename}>
+            <label htmlFor="group-rename" className="text-sm font-medium">
+              Group name
+            </label>
+            <div className="flex gap-2">
               <Input
+                id="group-rename"
                 value={groupName}
                 onChange={(event) => setGroupName(event.target.value)}
-                className="h-12 rounded-[12px] px-3.5 text-base"
+                className="h-11 flex-1 rounded-[12px] px-3.5 text-base"
               />
-              <button type="submit" className="text-sm font-medium text-primary">
+              <Button
+                type="submit"
+                variant="outline"
+                size="lg"
+                disabled={groupName.trim() === group.name || groupName.trim().length === 0}
+                pending={managing.pending}
+              >
                 Rename
-              </button>
-            </form>
-            <div className="space-y-3">
-              <h3 className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">Participants</h3>
-              {group.members.map((member) => (
-                <div key={member.id} className="flex items-center gap-3">
-                  <Person id={member.id} name={member.displayName} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{member.displayName}</p>
-                    <p className="text-xs text-muted-foreground">{member.role === "admin" ? "Admin" : "Member"}</p>
-                  </div>
-                  {member.role !== "admin" ? (
-                    <button type="button" className="text-xs font-semibold text-primary" onClick={() => void promote(member)}>
-                      Promote
-                    </button>
-                  ) : null}
-                  {member.role === "admin" && adminCount <= 1 ? null : (
-                    <button type="button" className="text-xs font-semibold text-negative" onClick={() => void removePerson(member)}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-              ))}
+              </Button>
             </div>
-            {confirmDelete ? (
-              <button type="button" className="text-sm font-medium text-negative" onClick={() => void removeGroup()}>
-                Confirm delete
-              </button>
-            ) : (
-              <button type="button" className="text-sm font-medium text-negative" onClick={() => setConfirmDelete(true)}>
-                Delete group
-              </button>
-            )}
+          </form>
+          <div className="space-y-3">
+            <h3 className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">Participants</h3>
+            {group.members.map((member) => (
+              <div key={member.id} className="flex items-center gap-3">
+                <Person id={member.id} name={member.displayName} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{member.displayName}</p>
+                  <p className="text-xs text-muted-foreground">{member.role === "admin" ? "Admin" : "Member"}</p>
+                </div>
+                {member.role !== "admin" ? (
+                  <Button variant="ghost" size="sm" className="text-primary" disabled={managing.pending} onClick={() => promote(member)}>
+                    Promote
+                  </Button>
+                ) : null}
+                {member.role === "admin" && adminCount <= 1 ? null : (
+                  <Button variant="ghost" size="sm" className="text-negative" disabled={managing.pending} onClick={() => removePerson(member)}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          {confirmDelete ? (
+            <div className="space-y-2 rounded-[12px] bg-negative/8 p-3">
+              <p className="text-sm">Delete {group.name} and all its expenses? This cannot be undone.</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="lg" className="flex-1" onClick={() => setConfirmDelete(false)}>
+                  Keep it
+                </Button>
+                <Button variant="destructive" size="lg" className="flex-1" pending={managing.pending} onClick={removeGroup}>
+                  Delete group
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="ghost" size="lg" className="text-negative" onClick={() => setConfirmDelete(true)}>
+              Delete group
+            </Button>
+          )}
         </div>
       </AppSheet>
     </div>
@@ -321,14 +369,22 @@ function ExpenseList({
   group,
   userId,
   onOpen,
+  onAdd,
 }: {
   group: GroupDetail
   userId: string
   onOpen: (expense: GroupDetail["expenses"][number]) => void
+  onAdd: () => void
 }) {
   if (group.expenses.length === 0) {
     return (
-      <p className="px-1 py-6 text-sm text-muted-foreground">No expenses yet.</p>
+      <div className="flex flex-col items-center rounded-[16px] bg-card px-6 py-10 text-center ring-1 ring-border">
+        <p className="font-semibold">No expenses yet</p>
+        <p className="mt-1 max-w-xs text-sm text-muted-foreground">Add rent, groceries or bills and Hissa works out who owes whom.</p>
+        <Button size="lg" className="mt-5" onClick={onAdd}>
+          <PlusIcon /> Add the first expense
+        </Button>
+      </div>
     )
   }
   return (
@@ -348,7 +404,7 @@ function ExpenseList({
             <button
               type="button"
               onClick={() => onOpen(expense)}
-              className="flex w-full items-center gap-3 rounded-[16px] bg-card px-3 py-3 text-left ring-1 ring-border active:bg-muted"
+              className="flex w-full items-center gap-3 rounded-[16px] bg-card px-3 py-3 text-left ring-1 ring-border transition hover:ring-primary/30 active:bg-muted md:px-4"
             >
               <CategoryIcon category={expense.category} />
               <span className="min-w-0 flex-1">

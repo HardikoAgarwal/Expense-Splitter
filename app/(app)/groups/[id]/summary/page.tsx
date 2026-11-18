@@ -1,10 +1,9 @@
 import { notFound, redirect } from "next/navigation"
 
-import { SummaryScreen } from "@/components/summary-screen"
-import { todayISO } from "@/lib/money"
-import { getSessionUser, getSummary } from "@/lib/queries"
+import { SummaryView } from "@/components/summary-view"
+import { getGroup, getSessionUser } from "@/lib/queries"
 
-export default async function SummaryPage({
+export default async function GroupSummaryPage({
   params,
   searchParams,
 }: {
@@ -12,15 +11,20 @@ export default async function SummaryPage({
   searchParams: Promise<{ month?: string }>
 }) {
   const [{ id }, { month }] = await Promise.all([params, searchParams])
-  const [user, summary] = await Promise.all([
-    getSessionUser(),
-    getSummary(id, month && /^\d{4}-\d{2}/.test(month) ? month : todayISO()),
-  ])
+  const [user, group] = await Promise.all([getSessionUser(), getGroup(id)])
   if (!user) redirect("/login")
-  if (!summary) notFound()
+  if (!group) notFound()
+  const people = Object.fromEntries(group.members.map((member) => [member.id, member.displayName]))
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <SummaryScreen summary={summary} user={user} />
-    </div>
+    <SummaryView
+      eyebrow="Monthly summary"
+      title={group.name}
+      backHref={`/groups/${group.id}`}
+      basePath={`/groups/${group.id}/summary`}
+      expenses={group.expenses}
+      people={people}
+      userId={user.id}
+      initialMonth={month && /^\d{4}-\d{2}/.test(month) ? `${month.slice(0, 7)}-01` : undefined}
+    />
   )
 }

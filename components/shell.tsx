@@ -3,11 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
+import { BarChart3Icon, BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { AppSheet } from "@/components/app-sheet"
 import { ExpenseSheet } from "@/components/expense-sheet"
+import { InstallBanner } from "@/components/install-banner"
 import { Mark } from "@/components/mark"
 import { Person } from "@/components/person"
 import { Button } from "@/components/ui/button"
@@ -96,7 +97,11 @@ export function Shell({
     [groups, pathname],
   )
 
-  const hideFab = pathname.startsWith("/account") || pathname.startsWith("/admin") || pathname.includes("/settle")
+  const hideFab =
+    pathname.startsWith("/account") ||
+    pathname.startsWith("/admin") ||
+    pathname.includes("/settle") ||
+    pathname.includes("/summary")
   const activeGroupId = pathname.match(/^\/groups\/([^/]+)/)?.[1] ?? null
 
   return (
@@ -122,6 +127,9 @@ export function Shell({
             </SideNavItem>
             <SideNavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
               <BellIcon />
+            </SideNavItem>
+            <SideNavItem href="/summary" label="Summary" active={pathname.startsWith("/summary") || pathname.endsWith("/summary")}>
+              <BarChart3Icon />
             </SideNavItem>
             <SideNavItem href="/account" label="Account" active={pathname.startsWith("/account") && !usersTab}>
               <UserRoundIcon />
@@ -179,18 +187,24 @@ export function Shell({
             id="main"
             className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-10"
           >
-            <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">{children}</div>
+            <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
+              {pathname === "/groups" ? <InstallBanner /> : null}
+              {children}
+            </div>
           </main>
 
           <nav
             aria-label="Main"
-            className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-3 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+            className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
           >
-            <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups")}>
+            <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups") && !pathname.endsWith("/summary")}>
               <UsersIcon />
             </NavItem>
             <NavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
               <BellIcon />
+            </NavItem>
+            <NavItem href="/summary" label="Summary" active={pathname.startsWith("/summary") || pathname.endsWith("/summary")}>
+              <BarChart3Icon />
             </NavItem>
             <NavItem href="/account" label="Account" active={pathname.startsWith("/account") || pathname.startsWith("/admin")}>
               <UserRoundIcon />

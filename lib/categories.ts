@@ -17,3 +17,18 @@ export function categoryLabel(id: string | null): string {
 export function isCategory(id: string | null | undefined): id is CategoryId {
   return CATEGORIES.some((category) => category.id === id)
 }
+
+/** Chart colours, matching the category icon tints. */
+export const CATEGORY_COLORS: Record<string, string> = {
+  rent: "#1F6B4A",
+  groceries: "#C08A2E",
+  utilities: "#3D72B0",
+  dining: "#C0533F",
+  transport: "#6656A8",
+  household: "#5C8C72",
+  other: "#9A928A",
+}
+
+export function categoryColor(id: string | null): string {
+  return CATEGORY_COLORS[id ?? "other"] ?? CATEGORY_COLORS.other
+}

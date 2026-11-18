@@ -11,6 +11,7 @@ import { Section } from "@/components/section"
 import { ShowList } from "@/components/show-list"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { UpiPay } from "@/components/upi-pay"
 import {
   cancelSettlementAction,
   requestSettlementAction,
@@ -23,7 +24,16 @@ import type { GroupDetail, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
-export function SettleScreen({ group, user }: { group: GroupDetail; user: SessionUser }) {
+export function SettleScreen({
+  group,
+  user,
+  upiIds = {},
+}: {
+  group: GroupDetail
+  user: SessionUser
+  /** UPI IDs of members who added one, keyed by user id. */
+  upiIds?: Record<string, string>
+}) {
   const others = group.members.filter((member) => member.id !== user.id)
   const [otherId, setOtherId] = useState(others[0]?.id ?? "")
   const [upToDate, setUpToDate] = useState(todayISO())
@@ -32,6 +42,8 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
   const { pending: saving, run } = useAction()
   const resolver = useAction()
   const other = others.find((member) => member.id === otherId)
+  const otherUpi = otherId ? upiIds[otherId] : undefined
+  const enteredPaise = rupeesToPaise(amount) ?? 0
 
   useEffect(() => {
     if (!otherId) return
@@ -156,6 +168,16 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
             </div>
           </label>
 
+          {owed !== null && owed > 0 ? (
+            otherUpi && other ? (
+              <UpiPay vpa={otherUpi} name={other.displayName} amountPaise={enteredPaise} />
+            ) : (
+              <p className="rounded-[12px] bg-muted/60 px-3.5 py-2.5 text-sm text-muted-foreground">
+                {other?.displayName.split(" ")[0]} hasn&apos;t added a UPI ID yet. Ask them to add one in Account → Profile so you can pay from here next time.
+              </p>
+            )
+          ) : null}
+
           {disputed.length > 0 ? (
             <Notice tone="warning" title="Disputed in this range">
               {disputed.map((expense) => expense.description).join(", ")} still count.
@@ -164,7 +186,7 @@ export function SettleScreen({ group, user }: { group: GroupDetail; user: Sessio
             <p className="text-sm text-muted-foreground">Approval locks expenses through {formatDay(upToDate)}.</p>
           )}
           <Button type="submit" size="xl" className="w-full" pending={saving}>
-            {saving ? "Sending…" : "Request approval"}
+            {saving ? "Sending…" : otherUpi && owed !== null && owed > 0 ? "I've paid · ask to approve" : "Request approval"}
           </Button>
         </form>
       )}

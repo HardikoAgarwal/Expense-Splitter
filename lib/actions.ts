@@ -1,13 +1,27 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 
 import { errorMessage } from "@/lib/errors"
+import { notifyExpenseAdded, notifySettlementRequested, notifySettlementResolved, pushEnabled } from "@/lib/push"
 import * as queries from "@/lib/queries"
 import type { ActionResult, SaveExpenseInput } from "@/lib/types"
 
 function refresh() {
   revalidatePath("/", "layout")
+}
+
+/** Runs a push after the response has been sent, so it never slows the action down. */
+function notifyLater(task: () => Promise<void>) {
+  if (!pushEnabled()) return
+  after(async () => {
+    try {
+      await task()
+    } catch (error) {
+      console.warn("[push] notify failed", error)
+    }
+  })
 }
 
 async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
@@ -102,7 +116,12 @@ export async function joinGroupAction(code: string) {
 }
 
 export async function saveExpenseAction(input: SaveExpenseInput) {
-  return run(() => queries.saveExpense(input))
+  const result = await run(() => queries.saveExpense(input))
+  if (result.ok && !input.id) {
+    const user = await queries.getSessionUser()
+    if (user) notifyLater(() => notifyExpenseAdded(user, input, result.data))
+  }
+  return result
 }
 
 export async function deleteExpenseAction(expenseId: string) {
@@ -141,11 +160,47 @@ export async function requestSettlementAction(input: {
   amountPaise: number
   upToDate: string
 }) {
-  return run(() => queries.requestSettlement(input))
+  const result = await run(() => queries.requestSettlement(input))
+  if (result.ok) {
+    const user = await queries.getSessionUser()
+    if (user) notifyLater(() => notifySettlementRequested(user, input, result.data))
+  }
+  return result
 }
 
 export async function resolveSettlementAction(settlementId: string, approve: boolean) {
-  return run(() => queries.resolveSettlement(settlementId, approve))
+  const result = await run(() => queries.resolveSettlement(settlementId, approve))
+  if (result.ok) {
+    const user = await queries.getSessionUser()
+    if (user) notifyLater(() => notifySettlementResolved(user, settlementId, approve))
+  }
+  return result
+}
+
+export async function updateUpiAction(upiId: string | null) {
+  return run(() => queries.updateUpi(upiId))
+}
+
+export async function savePushSubscriptionAction(input: {
+  endpoint: string
+  keys: { p256dh: string; auth: string }
+  userAgent: string
+}) {
+  try {
+    await queries.savePushSubscription(input)
+    return { ok: true as const, data: undefined }
+  } catch (error) {
+    return { ok: false as const, error: errorMessage(error) }
+  }
+}
+
+export async function deletePushSubscriptionAction(endpoint: string) {
+  try {
+    await queries.deletePushSubscription(endpoint)
+    return { ok: true as const, data: undefined }
+  } catch (error) {
+    return { ok: false as const, error: errorMessage(error) }
+  }
 }
 
 export async function cancelSettlementAction(settlementId: string) {

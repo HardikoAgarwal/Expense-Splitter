@@ -242,6 +242,26 @@ export async function cancelSettlement(settlementId: string) {
   return demo.cancelSettlement(user.id, settlementId)
 }
 
+export const listMyExpenses = cache(async () => {
+  if (!isDemoMode()) return remote.listMyExpenses()
+  const user = await actor()
+  if (!user) return []
+  const groups = await demo.listGroups(user.id)
+  const details = await Promise.all(groups.map((group) => demo.getGroup(user.id, group.id)))
+  return details.flatMap((detail) =>
+    (detail?.expenses ?? []).map((expense) => ({
+      id: expense.id,
+      groupId: expense.groupId,
+      description: expense.description,
+      amountPaise: expense.amountPaise,
+      payerId: expense.payerId,
+      expenseDate: expense.expenseDate,
+      category: expense.category,
+      shares: expense.shares,
+    })),
+  )
+})
+
 export const countUnseenNotices = cache(async () => {
   if (!isDemoMode()) return remote.countUnseenNotices()
   const user = await actor()
@@ -257,14 +277,36 @@ export const getActivity = cache(async () => {
   return demo.getActivity(user.id)
 })
 
-export async function getSummary(groupId: string, monthStart: string) {
-  if (!isDemoMode()) return remote.getSummary(groupId, monthStart)
-  const user = await actor()
-  if (!user) return null
-  return demo.getSummary(user.id, groupId, monthStart)
-}
-
 export async function pendingCount() {
   const activity = await getActivity()
   return activity.pending.length
+}
+
+export async function getMyUpiId() {
+  if (!isDemoMode()) return remote.getMyUpiId()
+  const user = await actor()
+  if (!user) return null
+  return demo.getUpiId(user.id)
+}
+
+export async function updateUpi(upiId: string | null) {
+  if (!isDemoMode()) return remote.updateUpi(upiId)
+  const user = await actor()
+  if (!user) throw new Error("You need to sign in again")
+  return demo.updateUpi(user.id, upiId)
+}
+
+export async function getUpiIds() {
+  if (!isDemoMode()) return remote.getUpiIds()
+  return demo.getUpiIds()
+}
+
+export async function savePushSubscription(input: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent: string }) {
+  if (isDemoMode()) throw new Error("Notifications are not available in demo mode")
+  return remote.savePushSubscription(input)
+}
+
+export async function deletePushSubscription(endpoint: string) {
+  if (isDemoMode()) return
+  return remote.deletePushSubscription(endpoint)
 }

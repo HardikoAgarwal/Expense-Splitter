@@ -147,25 +147,6 @@ export type ActivityItem = {
   direction?: "incoming" | "outgoing" | "other"
 }
 
-export type CategoryTotal = { category: string; totalPaise: number }
-
-export type MonthBreakdown = {
-  monthStart: string
-  totalPaise: number
-  mySharePaise: number
-  categories: CategoryTotal[]
-}
-
-export type GroupSummary = {
-  group: { id: string; name: string; members: Member[] }
-  monthStart: string
-  groupTotalPaise: number
-  mySharePaise: number
-  myNetPaise: number
-  debts: Debt[]
-  months: MonthBreakdown[]
-}
-
 export type SaveExpenseInput = {
   id?: string
   groupId: string
@@ -180,3 +161,14 @@ export type SaveExpenseInput = {
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string }
+
+export type SummaryExpenseRow = {
+  id: string
+  groupId: string
+  description: string
+  amountPaise: number
+  payerId: string
+  expenseDate: string
+  category: string | null
+  shares: Share[]
+}

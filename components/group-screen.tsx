@@ -7,6 +7,7 @@ import { ArrowLeftIcon, ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Shar
 import { AppSheet } from "@/components/app-sheet"
 import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseDetail } from "@/components/expense-detail"
+import { ExpenseFilterBar } from "@/components/expense-filters"
 import { Notice } from "@/components/notice"
 import { Person, PersonStack } from "@/components/person"
 import { ShowList } from "@/components/show-list"
@@ -24,6 +25,7 @@ import {
   revokeInvitesAction,
 } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
+import { EMPTY_FILTERS, filterExpenses, type ExpenseFilters } from "@/lib/expense-filters"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
 import type { Debt, GroupDetail, Member, SessionUser } from "@/lib/types"
@@ -34,6 +36,8 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const { openExpense } = useExpense()
   useRegisterGroup(group)
   const [tab, setTab] = useState<"expenses" | "balances">("expenses")
+  const [filters, setFilters] = useState<ExpenseFilters>(EMPTY_FILTERS)
+  const visible = filterExpenses(group.expenses, filters)
   const [openExpenseId, setOpenExpenseId] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
@@ -211,11 +215,25 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
                 Expenses · {group.expenses.length}
               </h2>
             </div>
+            {group.expenses.length > 0 ? (
+              <div className="mb-3">
+                <ExpenseFilterBar
+                  filters={filters}
+                  onChange={setFilters}
+                  members={group.members}
+                  userId={user.id}
+                  total={group.expenses.length}
+                  shown={visible.length}
+                />
+              </div>
+            ) : null}
             <ExpenseList
               group={group}
+              expenses={visible}
               userId={user.id}
               onOpen={(expense) => setOpenExpenseId(expense.id)}
               onAdd={() => openExpense(group.id)}
+              onClearFilters={() => setFilters(EMPTY_FILTERS)}
             />
           </section>
 
@@ -372,15 +390,30 @@ function BalanceHero({ group, userId }: { group: GroupDetail; userId: string }) 
 
 function ExpenseList({
   group,
+  expenses,
   userId,
   onOpen,
   onAdd,
+  onClearFilters,
 }: {
   group: GroupDetail
+  expenses: GroupDetail["expenses"]
   userId: string
   onOpen: (expense: GroupDetail["expenses"][number]) => void
   onAdd: () => void
+  onClearFilters: () => void
 }) {
+  if (group.expenses.length > 0 && expenses.length === 0) {
+    return (
+      <div className="flex flex-col items-center rounded-[16px] bg-card px-6 py-10 text-center ring-1 ring-border">
+        <p className="font-semibold">No expenses match</p>
+        <p className="mt-1 text-sm text-muted-foreground">Try a different search or remove a filter.</p>
+        <Button variant="outline" size="lg" className="mt-4" onClick={onClearFilters}>
+          Clear filters
+        </Button>
+      </div>
+    )
+  }
   if (group.expenses.length === 0) {
     return (
       <div className="flex flex-col items-center rounded-[16px] bg-card px-6 py-10 text-center ring-1 ring-border">
@@ -395,11 +428,11 @@ function ExpenseList({
   return (
     <div className="space-y-2">
       <ShowList
-        items={group.expenses}
+        items={expenses}
         render={(expense) => {
-          const index = group.expenses.indexOf(expense)
+          const index = expenses.indexOf(expense)
         const month = formatMonth(expense.expenseDate)
-        const previous = index > 0 ? formatMonth(group.expenses[index - 1].expenseDate) : ""
+        const previous = index > 0 ? formatMonth(expenses[index - 1].expenseDate) : ""
         const showMonth = month !== previous
         const mine = expense.shares.find((share) => share.userId === userId)?.sharePaise ?? 0
         const payer = group.members.find((member) => member.id === expense.payerId)?.displayName ?? "Someone"

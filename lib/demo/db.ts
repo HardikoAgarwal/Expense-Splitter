@@ -16,7 +16,6 @@ import {
   validateShares,
   type LedgerSettlement,
 } from "@/lib/ledger"
-import { monthStartISO } from "@/lib/money"
 import type {
   ActivityItem,
   Balance,
@@ -24,7 +23,6 @@ import type {
   Expense,
   GroupCard,
   GroupDetail,
-  GroupSummary,
   InvitePreview,
   Member,
   AppUser,
@@ -37,6 +35,7 @@ import { adminBlockReason, generateSecret, mutateUserBlockReason, signInBlockRea
 import { groupAdminBlockReason, promoteMemberBlockReason, removeMemberBlockReason } from "@/lib/group-access"
 import { hashPassword, verifyPassword } from "@/lib/demo/password"
 import { DEMO_INVITES, IDS, seedExpenses } from "@/lib/demo/seed-data"
+import { isValidUpi, normalizeUpi } from "@/lib/upi"
 
 type DemoUser = {
   id: string
@@ -48,6 +47,7 @@ type DemoUser = {
   isAdmin: boolean
   disabled: boolean
   invited: boolean
+  upiId?: string | null
 }
 
 type AccountInvite = {
@@ -978,52 +978,6 @@ export async function getActivity(userId: string) {
   })
 }
 
-export async function getSummary(userId: string, groupId: string, monthStart: string): Promise<GroupSummary | null> {
-  return withDb((db) => {
-    const detail = presentGroup(db, groupId, userId)
-    if (!detail) return null
-    return buildSummary(userId, detail, monthStartISO(monthStart))
-  })
-}
-
-export function buildSummary(userId: string, detail: GroupDetail, monthStart: string): GroupSummary {
-  const buckets = new Map<string, { total: number; mine: number; categories: Map<string, number> }>()
-  for (const expense of detail.expenses) {
-    const start = monthStartISO(expense.expenseDate)
-    const bucket = buckets.get(start) ?? { total: 0, mine: 0, categories: new Map<string, number>() }
-    bucket.total += expense.amountPaise
-    bucket.mine += expense.shares
-      .filter((share) => share.userId === userId)
-      .reduce((sum, share) => sum + share.sharePaise, 0)
-    const category = expense.category ?? "other"
-    bucket.categories.set(category, (bucket.categories.get(category) ?? 0) + expense.amountPaise)
-    buckets.set(start, bucket)
-  }
-  if (!buckets.has(monthStart)) {
-    buckets.set(monthStart, { total: 0, mine: 0, categories: new Map() })
-  }
-  const months = [...buckets.entries()]
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([start, bucket]) => ({
-      monthStart: start,
-      totalPaise: bucket.total,
-      mySharePaise: bucket.mine,
-      categories: [...bucket.categories.entries()]
-        .map(([category, totalPaise]) => ({ category, totalPaise }))
-        .sort((a, b) => b.totalPaise - a.totalPaise),
-    }))
-  const selected = months.find((month) => month.monthStart === monthStart) ?? months[0]
-  return {
-    group: { id: detail.id, name: detail.name, members: detail.members },
-    monthStart,
-    groupTotalPaise: selected.totalPaise,
-    mySharePaise: selected.mySharePaise,
-    myNetPaise: detail.myNetPaise,
-    debts: detail.debts,
-    months,
-  }
-}
-
 export function buildActivity(
   userId: string,
   details: GroupDetail[],
@@ -1102,4 +1056,27 @@ export function buildActivity(
     notices,
     feed: feed.filter((item) => !pending.some((itemPending) => itemPending.id === item.id)),
   }
+}
+
+export async function getUpiId(userId: string): Promise<string | null> {
+  return withDb((db) => db.users.find((item) => item.id === userId)?.upiId ?? null)
+}
+
+export async function updateUpi(userId: string, upiId: string | null): Promise<string | null> {
+  return withDb(async (db) => {
+    const user = requireUser(db, userId)
+    const value = normalizeUpi(upiId)
+    if (value && !isValidUpi(value)) throw new AppError("That doesn't look like a valid UPI ID (name@bank)")
+    user.upiId = value
+    await persist(db)
+    return value
+  })
+}
+
+export async function getUpiIds(): Promise<Record<string, string>> {
+  return withDb((db) => {
+    const out: Record<string, string> = {}
+    for (const user of db.users) if (user.upiId) out[user.id] = user.upiId
+    return out
+  })
 }

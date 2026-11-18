@@ -6,8 +6,8 @@ import { signInBlockReason } from "@/lib/admin"
 import { isCategory } from "@/lib/categories"
 import { AppError } from "@/lib/errors"
 import { isExpenseLocked, lockDate, type LedgerSettlement } from "@/lib/ledger"
-import { monthStartISO } from "@/lib/money"
 import { createClient } from "@/lib/supabase/server"
+import { isValidUpi, normalizeUpi } from "@/lib/upi"
 import type {
   ActivityItem,
   Balance,
@@ -15,13 +15,13 @@ import type {
   Expense,
   GroupCard,
   GroupDetail,
-  GroupSummary,
   InvitePreview,
   Member,
   SaveExpenseInput,
   SessionUser,
   Settlement,
   SettlementStatus,
+  SummaryExpenseRow,
 } from "@/lib/types"
 
 function fail(error: { message: string } | null, fallback?: string): asserts error is null {
@@ -580,50 +580,24 @@ export async function cancelSettlement(settlementId: string) {
   fail(error)
 }
 
-export async function getSummary(groupId: string, monthStart: string): Promise<GroupSummary | null> {
+export async function listMyExpenses(): Promise<SummaryExpenseRow[]> {
   const supabase = await client()
-  const selected = monthStartISO(monthStart)
-  const [detail, { data: months, error }, { data: categories, error: categoryError }] = await Promise.all([
-    getGroup(groupId),
-    supabase.rpc("group_month_totals", { p_group_id: groupId }),
-    supabase.rpc("group_category_totals", { p_group_id: groupId, p_month: selected }),
-  ])
-  if (!detail) return null
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("id, group_id, description, amount_paise, payer_id, expense_date, category, expense_shares(user_id, share_paise)")
   fail(error)
-  fail(categoryError)
-
-  const monthRows = ((months ?? []) as {
-    month_start: string
-    total_paise: number | string
-    my_share_paise: number | string
-  }[]).map((row) => ({
-    monthStart: String(row.month_start).slice(0, 10),
-    totalPaise: num(row.total_paise),
-    mySharePaise: num(row.my_share_paise),
-    categories: [] as { category: string; totalPaise: number }[],
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    groupId: row.group_id as string,
+    description: row.description as string,
+    amountPaise: num(row.amount_paise),
+    payerId: row.payer_id as string,
+    expenseDate: String(row.expense_date),
+    category: (row.category as string | null) ?? null,
+    shares: ((row.expense_shares ?? []) as { user_id: string; share_paise: number | string }[])
+      .map((share) => ({ userId: share.user_id, sharePaise: num(share.share_paise) }))
+      .filter((share) => share.sharePaise > 0),
   }))
-  if (!monthRows.some((month) => month.monthStart === selected)) {
-    monthRows.push({ monthStart: selected, totalPaise: 0, mySharePaise: 0, categories: [] })
-  }
-  monthRows.sort((a, b) => b.monthStart.localeCompare(a.monthStart))
-  const categoryRows = ((categories ?? []) as { category: string | null; total_paise: number | string }[]).map(
-    (row) => ({
-      category: row.category ?? "other",
-      totalPaise: num(row.total_paise),
-    }),
-  )
-  const current = monthRows.find((month) => month.monthStart === selected)!
-  current.categories = categoryRows
-
-  return {
-    group: { id: detail.id, name: detail.name, members: detail.members },
-    monthStart: selected,
-    groupTotalPaise: current.totalPaise,
-    mySharePaise: current.mySharePaise,
-    myNetPaise: detail.myNetPaise,
-    debts: detail.debts,
-    months: monthRows,
-  }
 }
 
 /** Cheap count for the nav badge, so the layout does not load the whole activity feed. */
@@ -734,4 +708,62 @@ export async function getActivity() {
     notices,
     feed: feed.filter((item) => !pending.some((itemPending) => itemPending.id === item.id)),
   }
+}
+
+/** The caller's UPI ID. Null when unset, or when the UPI migration has not been applied yet. */
+export async function getMyUpiId(): Promise<string | null> {
+  const user = await currentAuthUser()
+  if (!user) return null
+  const supabase = await client()
+  const { data, error } = await supabase.from("profiles").select("upi_id").eq("id", user.id).maybeSingle()
+  if (error) return null
+  return (data?.upi_id as string | null | undefined) ?? null
+}
+
+export async function updateUpi(upiId: string | null): Promise<string | null> {
+  const value = normalizeUpi(upiId)
+  if (value && !isValidUpi(value)) throw new AppError("That doesn't look like a valid UPI ID (name@bank)")
+  const user = await requireUser()
+  const supabase = await client()
+  const { error } = await supabase.from("profiles").update({ upi_id: value }).eq("id", user.id)
+  if (error && (error.code === "42703" || /upi_id/.test(error.message))) {
+    throw new AppError("UPI IDs need a database update first. Ask the admin to run the latest migration.")
+  }
+  fail(error)
+  return value
+}
+
+/**
+ * UPI IDs of everyone the caller can see (row-level security limits this to people they
+ * share a group with). Needs no group lookup first, so it runs in parallel with one.
+ * Never throws: UPI is optional.
+ */
+export async function getUpiIds(): Promise<Record<string, string>> {
+  const supabase = await client()
+  const { data, error } = await supabase.from("profiles").select("id, upi_id").not("upi_id", "is", null)
+  if (error) return {}
+  const out: Record<string, string> = {}
+  for (const row of data ?? []) if (row.upi_id) out[row.id as string] = row.upi_id as string
+  return out
+}
+
+export async function savePushSubscription(input: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent: string }) {
+  await requireUser()
+  const supabase = await client()
+  const { error } = await supabase.rpc("save_push_subscription", {
+    p_endpoint: input.endpoint,
+    p_keys: input.keys,
+    p_user_agent: input.userAgent,
+  })
+  if (error && (error.code === "PGRST202" || /save_push_subscription/.test(error.message))) {
+    throw new AppError("Notifications need a database update first. Ask the admin to run the latest migration.")
+  }
+  fail(error)
+}
+
+export async function deletePushSubscription(endpoint: string) {
+  const user = await requireUser()
+  const supabase = await client()
+  const { error } = await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint).eq("user_id", user.id)
+  if (error && error.code !== "42P01") fail(error)
 }

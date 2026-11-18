@@ -2,10 +2,13 @@
 
 import { useEffect } from "react"
 
+import { wireInstallPrompt } from "@/lib/pwa"
+
 export function PwaRegister() {
   useEffect(() => {
+    wireInstallPrompt()
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return
-    navigator.serviceWorker.register("/sw.js").catch(() => undefined)
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined)
   }, [])
   return null
 }

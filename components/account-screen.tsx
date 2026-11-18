@@ -13,6 +13,7 @@ import {
   PencilIcon,
   ShieldCheckIcon,
   SunIcon,
+  WalletIcon,
   UserRoundIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
@@ -21,10 +22,12 @@ import { ManageUsers } from "@/components/admin-screen"
 import { AppSheet } from "@/components/app-sheet"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
+import { PushToggle } from "@/components/push-toggle"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { signOutAction, updateNameAction, updatePasswordAction } from "@/lib/actions"
+import { signOutAction, updateNameAction, updatePasswordAction, updateUpiAction } from "@/lib/actions"
 import type { AppUser, SessionUser } from "@/lib/types"
+import { normalizeUpi, upiError } from "@/lib/upi"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
@@ -34,11 +37,16 @@ export function AccountScreen({
   user,
   people,
   initialTab = "profile",
+  upiId = null,
+  pushKey = null,
 }: {
   user: SessionUser
   /** Only loaded for admins. */
   people: AppUser[] | null
   initialTab?: AccountTab
+  upiId?: string | null
+  /** Public VAPID key; null when push is not configured on the server. */
+  pushKey?: string | null
 }) {
   const canManage = user.isAdmin && people !== null
   const [tab, setTab] = useState<AccountTab>(canManage ? initialTab : "profile")
@@ -95,7 +103,7 @@ export function AccountScreen({
           </div>
         ) : (
           <div role={canManage ? "tabpanel" : undefined} id="panel-profile" aria-labelledby={canManage ? "tab-profile" : undefined}>
-            <ProfileSettings user={user} />
+            <ProfileSettings user={user} upiId={upiId} pushKey={pushKey} />
           </div>
         )}
       </div>
@@ -128,8 +136,9 @@ function ProfileHeader({ user }: { user: SessionUser }) {
   )
 }
 
-function ProfileSettings({ user }: { user: SessionUser }) {
+function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: string | null; pushKey: string | null }) {
   const [nameOpen, setNameOpen] = useState(false)
+  const [upiOpen, setUpiOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const signingOut = useAction()
 
@@ -143,6 +152,23 @@ function ProfileSettings({ user }: { user: SessionUser }) {
         <SettingsRow icon={<UserRoundIcon />} label="Name" value={user.displayName} onClick={() => setNameOpen(true)} actionIcon={<PencilIcon />} />
         <SettingsRow icon={<MailIcon />} label="Email" value={user.email} hint="Ask the admin to change it" />
       </SettingsGroup>
+
+      <SettingsGroup title="Payments">
+        <SettingsRow
+          icon={<WalletIcon />}
+          label="UPI ID"
+          value={upiId ?? "Add your UPI ID"}
+          hint={upiId ? "Roommates can pay you in one tap" : "So roommates can pay you in one tap"}
+          onClick={() => setUpiOpen(true)}
+          actionIcon={<PencilIcon />}
+        />
+      </SettingsGroup>
+
+      {user.demo ? null : (
+        <SettingsGroup title="Notifications">
+          <PushToggle publicKey={pushKey} />
+        </SettingsGroup>
+      )}
 
       <SettingsGroup title="Security">
         <SettingsRow
@@ -177,6 +203,7 @@ function ProfileSettings({ user }: { user: SessionUser }) {
       </SettingsGroup>
 
       <EditNameDialog user={user} open={nameOpen} onOpenChange={setNameOpen} />
+      <EditUpiDialog upiId={upiId} open={upiOpen} onOpenChange={setUpiOpen} />
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
     </div>
   )
@@ -324,6 +351,91 @@ function EditNameDialog({
             {error}
           </p>
         ) : null}
+      </form>
+    </AppSheet>
+  )
+}
+
+function EditUpiDialog({
+  upiId,
+  open,
+  onOpenChange,
+}: {
+  upiId: string | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [value, setValue] = useState(upiId ?? "")
+  const [touched, setTouched] = useState(false)
+  const { pending, run } = useAction()
+  const error = upiError(value)
+  const next = normalizeUpi(value)
+  const unchanged = next === (upiId ?? null)
+
+  function save(event: React.FormEvent) {
+    event.preventDefault()
+    setTouched(true)
+    if (error) return
+    run(() => updateUpiAction(next), {
+      success: next ? "UPI ID saved" : "UPI ID removed",
+      onSuccess: () => onOpenChange(false),
+    })
+  }
+
+  return (
+    <AppSheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          setValue(upiId ?? "")
+          setTouched(false)
+        }
+        onOpenChange(nextOpen)
+      }}
+      title="UPI ID"
+      description="When someone owes you, Hissa shows them a Pay button that opens their UPI app with the amount filled in."
+      footer={
+        <div className="grid w-full gap-2">
+          <Button type="submit" form="edit-upi" size="xl" className="w-full" disabled={unchanged || Boolean(error)} pending={pending}>
+            {pending ? "Saving…" : "Save UPI ID"}
+          </Button>
+          {upiId ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              className="w-full text-negative"
+              disabled={pending}
+              onClick={() => run(() => updateUpiAction(null), { success: "UPI ID removed", onSuccess: () => onOpenChange(false) })}
+            >
+              Remove UPI ID
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
+      <form id="edit-upi" onSubmit={save} className="space-y-1.5 pb-2">
+        <label htmlFor="upi-id" className="text-sm font-medium">
+          UPI ID
+        </label>
+        <Input
+          id="upi-id"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onBlur={() => setTouched(true)}
+          placeholder="yourname@okicici"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="email"
+          aria-invalid={touched && error ? true : undefined}
+          aria-describedby="upi-help"
+          className="h-12 rounded-[12px] px-3.5 text-base"
+        />
+        <p id="upi-help" className={cn("text-xs", touched && error ? "text-negative" : "text-muted-foreground")}>
+          {touched && error ? error : "Find it in GPay, PhonePe or Paytm under your profile. Looks like name@bank."}
+        </p>
       </form>
     </AppSheet>
   )

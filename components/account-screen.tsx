@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useSyncExternalStore } from "react"
+import { useTheme } from "next-themes"
 import {
   ChevronRightIcon,
   EyeIcon,
@@ -8,8 +9,11 @@ import {
   KeyRoundIcon,
   LogOutIcon,
   MailIcon,
+  MonitorIcon,
+  MoonIcon,
   PencilIcon,
   ShieldCheckIcon,
+  SunIcon,
   WalletIcon,
   UserRoundIcon,
 } from "lucide-react"
@@ -187,6 +191,13 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
         />
       </SettingsGroup>
 
+      <section aria-labelledby="appearance-title">
+        <SectionTitle id="appearance-title" className="px-1">
+          Appearance
+        </SectionTitle>
+        <ThemePicker />
+      </section>
+
       {user.demo ? <Notice title="Demo mode">Local ledger. Sign in as the other roommate to approve a payment.</Notice> : null}
 
       <SettingsGroup>
@@ -281,6 +292,43 @@ function SettingsRow({
     <button type="button" onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/60">
       {body}
     </button>
+  )
+}
+
+function ThemePicker() {
+  const { theme, setTheme } = useTheme()
+  // The theme is only known in the browser; render it unselected on the server to avoid a hydration mismatch.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
+  const current = mounted ? (theme ?? "system") : undefined
+  return (
+    <div role="radiogroup" aria-labelledby="appearance-title" className="grid grid-cols-3 gap-1 rounded-[12px] bg-muted p-1">
+      {(
+        [
+          ["light", "Light", <SunIcon key="l" />],
+          ["dark", "Dark", <MoonIcon key="d" />],
+          ["system", "System", <MonitorIcon key="s" />],
+        ] as const
+      ).map(([value, label, icon]) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={current === value}
+          onClick={() => setTheme(value)}
+          className={cn(
+            "flex h-10 items-center justify-center gap-1.5 rounded-[10px] text-sm font-semibold transition [&_svg]:size-4",
+            current === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {icon}
+          {label}
+        </button>
+      ))}
+    </div>
   )
 }
 

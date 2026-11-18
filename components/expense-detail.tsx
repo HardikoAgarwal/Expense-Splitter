@@ -7,7 +7,7 @@ import { FlagIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react"
 import { AppSheet } from "@/components/app-sheet"
 import { CategoryIcon } from "@/components/category-icon"
 import { SectionTitle } from "@/components/field"
-import { Notice } from "@/components/notice"
+import { DisputeActions, DisputeThread, NoteDialog } from "@/components/dispute"
 import { Person } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,11 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { deleteExpenseAction, flagExpenseAction, resolveFlagAction } from "@/lib/actions"
+import { deleteExpenseAction, flagExpenseAction } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
+import { disputeRole, updatedSinceRaised } from "@/lib/disputes"
 import { canModifyExpense } from "@/lib/expense-access"
 import { formatDay, formatINR } from "@/lib/money"
-import type { ActionResult, Expense, GroupDetail, SessionUser } from "@/lib/types"
+import type { Expense, GroupDetail, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
@@ -40,44 +41,35 @@ export function ExpenseDetail({
   onClose: () => void
 }) {
   const { pending: busy, run } = useAction()
-  const [reason, setReason] = useState("")
-  const [flagging, setFlagging] = useState(false)
+  const flagging = useAction()
+  const [flagOpen, setFlagOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const mine = expense?.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0
   const myFlag = expense?.flags.find((flag) => flag.userId === user.id) ?? null
   const canFlag = mine > 0 && !myFlag && expense?.createdBy !== user.id
-  const canResolve = expense
-    ? expense.flags.some((flag) => flag.userId === user.id || expense.createdBy === user.id)
-    : false
   const canModify = canModifyExpense(expense, user.id)
   const fullName = (id: string) => group.members.find((member) => member.id === id)?.displayName ?? "Former member"
   const nameOf = (id: string) => (id === user.id ? "You" : fullName(id))
   const participants = (expense?.shares ?? []).filter((share) => share.sharePaise > 0)
+  // When a flag waits on you and you've already edited since, asking is the main step, not editing again.
+  const askIsNext = Boolean(
+    expense?.flags.some(
+      (openFlag) =>
+        disputeRole(openFlag, expense, user.id) === "owner" &&
+        openFlag.awaiting === "owner" &&
+        updatedSinceRaised(openFlag, expense.updatedAt),
+    ),
+  )
+  const editIsNext = Boolean(
+    expense?.flags.some((openFlag) => disputeRole(openFlag, expense, user.id) === "owner" && openFlag.awaiting === "owner"),
+  ) && !askIsNext
 
-  function flag() {
+  function flag(note: string) {
     if (!expense) return
-    run(() => flagExpenseAction(expense.id, reason), {
-      success: "Flagged",
-      onSuccess: () => {
-        setFlagging(false)
-        setReason("")
-      },
+    flagging.run(() => flagExpenseAction(expense.id, note), {
+      success: `Flagged. ${fullName(expense.createdBy).split(" ")[0]} will take a look`,
+      onSuccess: () => setFlagOpen(false),
     })
-  }
-
-  function resolveOpen() {
-    if (!expense) return
-    const allowed = expense.flags.filter((flag) => flag.userId === user.id || expense.createdBy === user.id)
-    run(
-      async (): Promise<ActionResult<undefined>> => {
-        for (const openFlag of allowed) {
-          const result = await resolveFlagAction(openFlag.id)
-          if (!result.ok) return result
-        }
-        return { ok: true, data: undefined }
-      },
-      { success: "Flag resolved" },
-    )
   }
 
   function remove() {
@@ -113,7 +105,7 @@ export function ExpenseDetail({
                 >
                   <Trash2Icon /> Delete
                 </Button>
-                <Button className="h-12 rounded-[12px]" onClick={() => onEdit(expense)}>
+                <Button variant={askIsNext ? "outline" : "default"} className="h-12 rounded-[12px]" onClick={() => onEdit(expense)}>
                   <PencilIcon /> Edit
                 </Button>
               </div>
@@ -134,26 +126,6 @@ export function ExpenseDetail({
               </div>
             </div>
 
-            {expense.disputed ? (
-              <Notice
-                tone="warning"
-                title="Disputed"
-                action={
-                  canResolve ? (
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-primary"
-                      disabled={busy}
-                      onClick={() => resolveOpen()}
-                    >
-                      Resolve
-                    </button>
-                  ) : null
-                }
-              >
-                {expense.flags[0]?.reason || "Still counted in balances."}
-              </Notice>
-            ) : null}
 
             <section aria-label="Split">
               <SectionTitle as="h3" className="mb-3">
@@ -176,52 +148,71 @@ export function ExpenseDetail({
               </ul>
             </section>
 
-            {canFlag ? (
-              flagging ? (
-                <form
-                  className="space-y-3 rounded-[16px] bg-muted/50 p-3"
-                  onSubmit={(event) => {
-                    event.preventDefault()
-                    flag()
-                  }}
+            {expense.flags.map((openFlag) => {
+              const role = disputeRole(openFlag, expense, user.id)
+              return (
+                <section
+                  key={openFlag.id}
+                  aria-label="Dispute"
+                  className="space-y-4 rounded-[16px] bg-warning/8 p-4 ring-1 ring-warning/25"
                 >
-                  <label htmlFor="flag-reason" className="block text-sm font-medium">
-                    What looks wrong?
-                  </label>
-                  <textarea
-                    id="flag-reason"
-                    value={reason}
-                    onChange={(event) => setReason(event.target.value)}
-                    maxLength={200}
-                    placeholder="Optional note, e.g. I wasn't there"
-                    className="min-h-20 w-full rounded-[12px] border border-input bg-background px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button type="button" variant="ghost" className="h-11 rounded-[12px]" onClick={() => setFlagging(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" variant="outline" className="h-11 rounded-[12px]" pending={busy}>
-                      <FlagIcon /> Flag it
-                    </Button>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="flex items-center gap-2 text-sm font-semibold">
+                      <FlagIcon className="size-4 text-warning" aria-hidden /> Disputed
+                    </p>
+                    <span className="text-xs text-muted-foreground">Still counted in balances</span>
                   </div>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  className="mx-auto flex h-10 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  onClick={() => setFlagging(true)}
-                >
-                  <FlagIcon className="size-4" aria-hidden /> Something wrong? Flag it
-                </button>
+                  <DisputeThread flag={openFlag} viewerId={user.id} nameOf={fullName} />
+                  {role ? (
+                    <DisputeActions
+                      askPrimary={!editIsNext || !canModify}
+                      view={{
+                        flagId: openFlag.id,
+                        description: expense.description,
+                        role,
+                        awaiting: openFlag.awaiting,
+                        flaggerName: fullName(openFlag.userId),
+                        ownerName: fullName(expense.createdBy),
+                        canEdit: canModify && !expense.locked,
+                        updatedSinceRaised: updatedSinceRaised(openFlag, expense.updatedAt),
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {openFlag.awaiting === "flagger"
+                        ? `Waiting for ${fullName(openFlag.userId).split(" ")[0]} to check it.`
+                        : `Waiting for ${fullName(expense.createdBy).split(" ")[0]} to fix it.`}
+                    </p>
+                  )}
+                </section>
               )
-            ) : myFlag ? (
-              <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <FlagIcon className="size-4" aria-hidden /> You flagged this expense
-              </p>
+            })}
+
+            {canFlag ? (
+              <button
+                type="button"
+                className="mx-auto flex h-10 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                onClick={() => setFlagOpen(true)}
+              >
+                <FlagIcon className="size-4" aria-hidden /> Something wrong? Flag it
+              </button>
             ) : null}
           </div>
         ) : null}
       </AppSheet>
+
+      <NoteDialog
+        open={flagOpen}
+        onOpenChange={setFlagOpen}
+        title="Flag this expense"
+        description={expense ? `${fullName(expense.createdBy).split(" ")[0]} gets a notification to fix it. Balances don't change meanwhile.` : undefined}
+        label="What looks wrong"
+        placeholder="e.g. I wasn't at dinner"
+        submitLabel="Flag it"
+        icon={<FlagIcon />}
+        pending={flagging.pending}
+        onSubmit={flag}
+      />
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>

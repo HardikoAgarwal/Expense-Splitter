@@ -3,6 +3,7 @@ import "server-only"
 import { cache } from "react"
 
 import * as demo from "@/lib/demo/db"
+import { isTaskNotice, type OpenFlag } from "@/lib/disputes"
 import { isDemoMode } from "@/lib/env"
 import { clearDemoUserId, readDemoUserId, writeDemoUserId } from "@/lib/session"
 import * as accounts from "@/lib/supabase/accounts"
@@ -195,16 +196,69 @@ export async function deleteExpense(expenseId: string) {
   return demo.deleteExpense(user.id, expenseId)
 }
 
-export async function flagExpense(expenseId: string, reason: string) {
-  const user = await actorOrThrow()
-  if (!isDemoMode()) return remote.flagExpense(expenseId, reason)
-  return demo.flagExpense(user.id, expenseId, reason)
+/** Who to push to after a dispute step. Null in demo mode, where push is off. */
+export type DisputeContext = {
+  expenseId: string
+  groupId: string
+  description: string
+  createdBy: string
+  payerId: string
+  flaggerId: string
 }
 
-export async function resolveFlag(flagId: string) {
+function contextOf(item: OpenFlag): DisputeContext {
+  return {
+    expenseId: item.expenseId,
+    groupId: item.groupId,
+    description: item.description,
+    createdBy: item.createdBy,
+    payerId: item.payerId,
+    flaggerId: item.flag.userId,
+  }
+}
+
+export async function flagExpense(expenseId: string, reason: string): Promise<DisputeContext | null> {
   const user = await actorOrThrow()
-  if (!isDemoMode()) return remote.resolveFlag(flagId)
-  return demo.resolveFlag(user.id, flagId)
+  if (isDemoMode()) {
+    await demo.flagExpense(user.id, expenseId, reason)
+    return null
+  }
+  const { snapshot } = await remote.flagExpense(expenseId, reason)
+  return {
+    expenseId,
+    groupId: snapshot.groupId,
+    description: snapshot.description,
+    createdBy: snapshot.createdBy,
+    payerId: snapshot.payerId,
+    flaggerId: user.id,
+  }
+}
+
+export async function resolveFlag(flagId: string): Promise<DisputeContext | null> {
+  const user = await actorOrThrow()
+  if (isDemoMode()) {
+    await demo.resolveFlag(user.id, flagId)
+    return null
+  }
+  return contextOf(await remote.resolveFlag(flagId))
+}
+
+export async function requestResolve(flagId: string, note: string): Promise<DisputeContext | null> {
+  const user = await actorOrThrow()
+  if (isDemoMode()) {
+    await demo.requestResolve(user.id, flagId, note)
+    return null
+  }
+  return contextOf(await remote.requestResolve(flagId, note))
+}
+
+export async function stillWrong(flagId: string, note: string): Promise<DisputeContext | null> {
+  const user = await actorOrThrow()
+  if (isDemoMode()) {
+    await demo.stillWrong(user.id, flagId, note)
+    return null
+  }
+  return contextOf(await remote.stillWrong(flagId, note))
 }
 
 export async function markNoticeSeen(noticeId: string) {
@@ -277,13 +331,13 @@ export const countUnseenNotices = cache(async () => {
   const user = await actor()
   if (!user) return 0
   const activity = await demo.getActivity(user.id)
-  return activity.notices.filter((notice) => !notice.seen).length
+  return activity.notices.filter((notice) => !notice.seen && !isTaskNotice(notice.kind)).length
 })
 
 export const getActivity = cache(async () => {
   if (!isDemoMode()) return remote.getActivity()
   const user = await actor()
-  if (!user) return { pending: [], notices: [], feed: [] }
+  if (!user) return { pending: [], disputes: [], notices: [], feed: [] }
   return demo.getActivity(user.id)
 })
 

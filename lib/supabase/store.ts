@@ -4,6 +4,16 @@ import { cache } from "react"
 
 import { signInBlockReason } from "@/lib/admin"
 import { isCategory } from "@/lib/categories"
+import {
+  disputeNeedsMe,
+  disputeTasks,
+  flagBlockReason,
+  type OpenFlag,
+  requestResolveBlockReason,
+  resolveFlagBlockReason,
+  stillWrongBlockReason,
+  TASK_NOTICE_KINDS,
+} from "@/lib/disputes"
 import { AppError } from "@/lib/errors"
 import { canModifyExpense, ONLY_CREATOR_MESSAGE } from "@/lib/expense-access"
 import type { ExpenseSnapshot } from "@/lib/expense-changes"
@@ -12,6 +22,8 @@ import { createClient } from "@/lib/supabase/server"
 import { isValidUpi, normalizeUpi } from "@/lib/upi"
 import type {
   ActivityItem,
+  DisputeEvent,
+  ExpenseFlag,
   Balance,
   Debt,
   Expense,
@@ -36,9 +48,97 @@ function num(value: number | string | null | undefined) {
   return typeof value === "number" ? value : Number(value)
 }
 
-function embeddedGroupId(value: { group_id?: string } | { group_id?: string }[] | null): string | null {
-  const row = asOne(value)
-  return row?.group_id ?? null
+type FlagExpenseEmbed = {
+  group_id: string
+  created_by: string
+  payer_id: string
+  description: string
+  amount_paise: number | string
+  updated_at: string
+  groups: GroupEmbed | GroupEmbed[] | null
+}
+
+const FLAG_EXPENSE = "expenses(group_id, created_by, payer_id, description, amount_paise, updated_at, groups(name))"
+
+/**
+ * Every open dispute the viewer can see, with its history. Falls back to the
+ * pre-dispute-flow columns until 20261118180000_dispute_flow.sql is applied.
+ */
+const listOpenFlags = cache(async (): Promise<OpenFlag[]> => {
+  const supabase = await client()
+  let rows: Record<string, unknown>[] | null
+  const full = await supabase
+    .from("expense_flags")
+    .select(`id, expense_id, user_id, reason, created_at, awaiting, expense_flag_events(id, kind, actor_id, note, created_at), ${FLAG_EXPENSE}`)
+    .is("resolved_at", null)
+  if (full.error) {
+    const basic = await supabase
+      .from("expense_flags")
+      .select(`id, expense_id, user_id, reason, created_at, ${FLAG_EXPENSE}`)
+      .is("resolved_at", null)
+    fail(basic.error)
+    rows = basic.data
+  } else {
+    rows = full.data
+  }
+  return (rows ?? []).flatMap((row) => {
+    const expense = asOne(row.expenses as FlagExpenseEmbed | FlagExpenseEmbed[] | null)
+    if (!expense) return []
+    const group = asOne(expense.groups)
+    const rawEvents = (row.expense_flag_events ?? []) as {
+      id: string
+      kind: DisputeEvent["kind"]
+      actor_id: string
+      note: string | null
+      created_at: string
+    }[]
+    const events: DisputeEvent[] = rawEvents.length
+      ? rawEvents
+          .map((event) => ({
+            id: event.id,
+            kind: event.kind,
+            actorId: event.actor_id,
+            note: event.note,
+            createdAt: event.created_at,
+          }))
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      : [
+          {
+            id: `${row.id}-flagged`,
+            kind: "flagged",
+            actorId: row.user_id as string,
+            note: (row.reason as string | null) ?? null,
+            createdAt: row.created_at as string,
+          },
+        ]
+    const flag: ExpenseFlag = {
+      id: row.id as string,
+      userId: row.user_id as string,
+      reason: (row.reason as string | null) ?? null,
+      createdAt: row.created_at as string,
+      awaiting: row.awaiting === "flagger" ? "flagger" : "owner",
+      events,
+    }
+    return [
+      {
+        flag,
+        expenseId: row.expense_id as string,
+        groupId: expense.group_id,
+        groupName: group?.name ?? "Group",
+        description: expense.description,
+        amountPaise: num(expense.amount_paise),
+        createdBy: expense.created_by,
+        payerId: expense.payer_id,
+        updatedAt: expense.updated_at,
+      },
+    ]
+  })
+})
+
+async function openFlag(flagId: string) {
+  const found = (await listOpenFlags()).find((item) => item.flag.id === flagId)
+  if (!found) throw new AppError("That dispute is already resolved")
+  return found
 }
 
 function asOne<T>(value: T | T[] | null | undefined): T | null {
@@ -183,16 +283,15 @@ export async function listGroups(): Promise<GroupCard[]> {
     user,
     { data: memberships, error },
     { data: pendingRows, error: pendingError },
-    { data: openFlags, error: flagError },
+    openFlags,
   ] = await Promise.all([
     requireUser(),
     supabase.from("group_members").select("group_id, user_id, role, groups(id, name), profiles(id, display_name, email)"),
     supabase.from("settlements").select("group_id").eq("to_user_id", authUser.id).eq("status", "pending"),
-    supabase.from("expense_flags").select("expense_id, expenses(group_id)").is("resolved_at", null),
+    listOpenFlags(),
   ])
   fail(error)
   fail(pendingError)
-  fail(flagError)
   const rows = memberships ?? []
   const groupIds = [...new Set(rows.map((row) => row.group_id as string))]
 
@@ -221,7 +320,8 @@ export async function listGroups(): Promise<GroupCard[]> {
       members,
       myNetPaise: num(mine?.net_paise),
       pendingForMe: (pendingRows ?? []).filter((row) => row.group_id === groupId).length,
-      disputedCount: (openFlags ?? []).filter((row) => embeddedGroupId(row.expenses) === groupId).length,
+      disputedCount: new Set(openFlags.filter((item) => item.groupId === groupId).map((item) => item.expenseId)).size,
+      disputesForMe: openFlags.filter((item) => item.groupId === groupId && disputeNeedsMe(item.flag, item, user.id)).length,
     }
   })
   return cards.sort((a, b) => a.name.localeCompare(b.name))
@@ -256,7 +356,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
     { data: group, error },
     { data: memberRows, error: memberError },
     { data: expenseRows, error: expenseError },
-    { data: flagRows, error: openFlagError },
+    openFlags,
     { data: settlementRows, error: settlementError },
     { data: balanceRows, error: balanceError },
     { data: debtRows, error: debtError },
@@ -270,7 +370,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
         "id, group_id, description, amount_paise, payer_id, expense_date, category, created_by, created_at, updated_at, expense_shares(user_id, share_paise)",
       )
       .eq("group_id", groupId),
-    supabase.from("expense_flags").select("id, expense_id, user_id, reason, created_at").is("resolved_at", null),
+    listOpenFlags(),
     supabase.from("settlements").select("*").eq("group_id", groupId).order("created_at", { ascending: false }),
     supabase.rpc("group_balances", { p_group_id: groupId }),
     supabase.rpc("simplified_debts", { p_group_id: groupId }),
@@ -279,7 +379,6 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
   if (!group) return null
   fail(memberError)
   fail(expenseError)
-  fail(openFlagError)
   fail(settlementError)
   fail(balanceError)
   fail(debtError)
@@ -295,14 +394,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
         }))
         .filter((share) => share.sharePaise > 0)
       const expenseDate = String(row.expense_date)
-      const flags = (flagRows ?? [])
-        .filter((flag) => flag.expense_id === row.id)
-        .map((flag) => ({
-          id: flag.id as string,
-          userId: flag.user_id as string,
-          reason: (flag.reason as string | null) ?? null,
-          createdAt: flag.created_at as string,
-        }))
+      const flags = openFlags.filter((item) => item.expenseId === row.id).map((item) => item.flag)
       return {
         id: row.id as string,
         groupId: row.group_id as string,
@@ -532,15 +624,55 @@ export async function deleteExpense(expenseId: string) {
 }
 
 export async function flagExpense(expenseId: string, reason: string) {
+  const [user, snapshot] = await Promise.all([requireUser(), expenseSnapshot(expenseId)])
+  if (!snapshot) throw new AppError("Expense not found")
+  const blocked = flagBlockReason({
+    sharePaise: snapshot.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0,
+    actorId: user.id,
+    creatorId: snapshot.createdBy,
+  })
+  if (blocked) throw new AppError(blocked)
   const supabase = await client()
-  const { error } = await supabase.rpc("flag_expense", { p_expense_id: expenseId, p_reason: reason })
+  const { data, error } = await supabase.rpc("flag_expense", { p_expense_id: expenseId, p_reason: reason })
   fail(error)
+  return { flagId: data as string, snapshot }
 }
 
 export async function resolveFlag(flagId: string) {
+  const [user, item] = await Promise.all([requireUser(), openFlag(flagId)])
+  const blocked = resolveFlagBlockReason({ actorId: user.id, flaggerId: item.flag.userId })
+  if (blocked) throw new AppError(blocked)
   const supabase = await client()
   const { error } = await supabase.rpc("resolve_expense_flag", { p_flag_id: flagId })
   fail(error)
+  return item
+}
+
+/** The creator (or payer) has fixed things and asks the flagger to resolve. */
+export async function requestResolve(flagId: string, note: string) {
+  const [user, item] = await Promise.all([requireUser(), openFlag(flagId)])
+  const blocked = requestResolveBlockReason({
+    actorId: user.id,
+    creatorId: item.createdBy,
+    payerId: item.payerId,
+    awaiting: item.flag.awaiting,
+  })
+  if (blocked) throw new AppError(blocked)
+  const supabase = await client()
+  const { error } = await supabase.rpc("request_flag_resolution", { p_flag_id: flagId, p_note: note })
+  fail(error)
+  return item
+}
+
+/** The flagger was asked to resolve but it's still wrong: back to the creator. */
+export async function stillWrong(flagId: string, note: string) {
+  const [user, item] = await Promise.all([requireUser(), openFlag(flagId)])
+  const blocked = stillWrongBlockReason({ actorId: user.id, flaggerId: item.flag.userId, awaiting: item.flag.awaiting })
+  if (blocked) throw new AppError(blocked)
+  const supabase = await client()
+  const { error } = await supabase.rpc("reject_flag_resolution", { p_flag_id: flagId, p_note: note })
+  fail(error)
+  return item
 }
 
 export async function markNoticeSeen(noticeId: string) {
@@ -643,11 +775,12 @@ export async function countUnseenNotices(): Promise<number> {
   const user = await currentAuthUser()
   if (!user) return 0
   const supabase = await client()
-  const { count, error } = await supabase
-    .from("share_notices")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .is("seen_at", null)
+  const unseen = () =>
+    supabase.from("share_notices").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("seen_at", null)
+  // Dispute steps show up under Needs you instead, so they are not counted again here.
+  const filtered = await unseen().not("kind", "in", `(${TASK_NOTICE_KINDS.join(",")})`)
+  if (!filtered.error) return filtered.count ?? 0
+  const { count, error } = await unseen()
   if (error) return 0
   return count ?? 0
 }
@@ -670,6 +803,7 @@ async function listNotices(
 
 export async function getActivity() {
   const user = await requireUser()
+  const openFlagsPromise = listOpenFlags()
   const supabase = await client()
   const [
     { data: expenseRows, error },
@@ -682,6 +816,7 @@ export async function getActivity() {
     supabase.from("profiles").select("id, display_name"),
     listNotices(user.id),
   ])
+  const openFlags = await openFlagsPromise
   fail(error)
   fail(settlementError)
   fail(profileError)
@@ -759,6 +894,7 @@ export async function getActivity() {
 
   return {
     pending,
+    disputes: disputeTasks(openFlags, user.id, nameOf),
     notices,
     feed: feed.filter((item) => !pending.some((itemPending) => itemPending.id === item.id)),
   }

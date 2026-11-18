@@ -32,11 +32,46 @@ export type Member = {
   role: "admin" | "member"
 }
 
+export type DisputeEventKind = "flagged" | "resolve_requested" | "still_wrong" | "resolved"
+
+export type DisputeEvent = {
+  id: string
+  kind: DisputeEventKind
+  actorId: string
+  note: string | null
+  createdAt: string
+}
+
 export type ExpenseFlag = {
   id: string
   userId: string
   reason: string | null
   createdAt: string
+  /** Whose move it is: the owner (who added or paid) fixes and asks; the flagger resolves or says still wrong. */
+  awaiting: "owner" | "flagger"
+  events: DisputeEvent[]
+}
+
+/** An open dispute that needs the viewer to act, for Activity → Needs you. */
+export type DisputeTask = {
+  flagId: string
+  expenseId: string
+  groupId: string
+  groupName: string
+  description: string
+  amountPaise: number
+  role: "owner" | "flagger"
+  flaggerId: string
+  flaggerName: string
+  ownerId: string
+  ownerName: string
+  reason: string | null
+  /** The newest note in the thread (request or "still wrong"), if any. */
+  note: string | null
+  lastKind: DisputeEventKind
+  updatedSinceRaised: boolean
+  canEdit: boolean
+  at: string
 }
 
 export type Expense = {
@@ -56,9 +91,11 @@ export type Expense = {
   flags: ExpenseFlag[]
 }
 
+export type NoticeKind = "added" | "edited" | "deleted" | "flagged" | "resolve_requested" | "still_wrong" | "resolved"
+
 export type ShareNotice = {
   id: string
-  kind: "added" | "edited" | "deleted"
+  kind: NoticeKind
   /** Edited/deleted notices: what changed, e.g. "₹1,200 → ₹1,500 · your share ₹600 → ₹750". */
   summary: string | null
   /** Null for deleted expenses. */
@@ -110,6 +147,8 @@ export type GroupCard = {
   myNetPaise: number
   pendingForMe: number
   disputedCount: number
+  /** Open disputes where the next move is yours. */
+  disputesForMe: number
 }
 
 export type GroupDetail = {

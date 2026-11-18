@@ -5,7 +5,15 @@ import path from "node:path"
 import { isCategory } from "@/lib/categories"
 import { DEMO_ACCOUNTS } from "@/lib/env"
 import { AppError } from "@/lib/errors"
-import { editClearsFlags, flagBlockReason, resolveFlagBlockReason } from "@/lib/disputes"
+import {
+  disputeNeedsMe,
+  disputeTasks,
+  flagBlockReason,
+  type OpenFlag,
+  requestResolveBlockReason,
+  resolveFlagBlockReason,
+  stillWrongBlockReason,
+} from "@/lib/disputes"
 import {
   computeBalances,
   isExpenseLocked,
@@ -17,6 +25,7 @@ import {
   type LedgerSettlement,
 } from "@/lib/ledger"
 import type {
+  DisputeEvent,
   ActivityItem,
   Balance,
   ShareNotice,
@@ -77,6 +86,8 @@ type DemoFlag = {
   createdAt: string
   resolvedAt: string | null
   resolvedBy: string | null
+  awaiting?: "owner" | "flagger"
+  events?: DisputeEvent[]
 }
 
 type DemoNotice = {
@@ -323,6 +334,10 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
           userId: flag.userId,
           reason: flag.reason,
           createdAt: flag.createdAt,
+          awaiting: flag.awaiting ?? "owner",
+          events: flag.events?.length
+            ? flag.events
+            : [{ id: `${flag.id}-flagged`, kind: "flagged" as const, actorId: flag.userId, note: flag.reason, createdAt: flag.createdAt }],
         }))
       return {
         ...expense,
@@ -558,6 +573,9 @@ export async function listGroups(userId: string): Promise<GroupCard[]> {
             (settlement) => settlement.status === "pending" && settlement.toUserId === userId,
           ).length,
           disputedCount: detail.expenses.filter((expense) => expense.disputed).length,
+          disputesForMe: detail.expenses
+            .flatMap((expense) => expense.flags.map((flag) => ({ flag, expense })))
+            .filter(({ flag, expense }) => disputeNeedsMe(flag, expense, userId)).length,
         }
       })
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -775,7 +793,6 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
       throw new AppError("This expense is locked by an approved settlement")
     }
     const previous = new Set(existing.shares.filter((share) => share.sharePaise > 0).map((share) => share.userId))
-    const previousPayer = existing.payerId
     const before = demoSnapshot(existing)
     existing.description = description
     existing.amountPaise = input.amountPaise
@@ -784,14 +801,6 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
     existing.category = input.category
     existing.shares = shares
     existing.updatedAt = now
-    if (editClearsFlags({ actorId: userId, creatorId: existing.createdBy, payerId: previousPayer }) || userId === input.payerId) {
-      for (const flag of db.flags) {
-        if (flag.expenseId === existing.id && !flag.resolvedAt) {
-          flag.resolvedAt = now
-          flag.resolvedBy = userId
-        }
-      }
-    }
     recordShareNotices(db, userId, existing, previous)
     recordChangeNotices(db, userId, "edited", before, demoSnapshot(existing))
     await persist(db)
@@ -881,51 +890,118 @@ export async function deleteExpense(userId: string, expenseId: string) {
   })
 }
 
+function disputeNotice(db: DemoDb, kind: NoticeKind, to: string, actorId: string, expense: DemoExpense, note: string | null) {
+  if (to === actorId) return
+  db.notices.push({
+    id: randomUUID(),
+    kind,
+    summary: note,
+    description: expense.description,
+    userId: to,
+    expenseId: expense.id,
+    groupId: expense.groupId,
+    actorId,
+    sharePaise: 0,
+    createdAt: new Date().toISOString(),
+    seenAt: null,
+  })
+}
+
+/** Tell the person who added it, and the payer if that's someone else. */
+function noticeOwners(db: DemoDb, kind: NoticeKind, actorId: string, expense: DemoExpense, note: string | null) {
+  disputeNotice(db, kind, expense.createdBy, actorId, expense, note)
+  if (expense.payerId !== expense.createdBy) disputeNotice(db, kind, expense.payerId, actorId, expense, note)
+}
+
+function cleanNote(note: string) {
+  const value = note.trim()
+  if (value.length > 200) throw new AppError("Keep the note under 200 characters")
+  return value || null
+}
+
+function openDemoFlag(db: DemoDb, flagId: string) {
+  const flag = db.flags.find((item) => item.id === flagId && !item.resolvedAt)
+  if (!flag) throw new AppError("That dispute is already resolved")
+  const expense = db.expenses.find((item) => item.id === flag.expenseId)
+  if (!expense) throw new AppError("Expense not found")
+  flag.events ??= [{ id: `${flag.id}-flagged`, kind: "flagged", actorId: flag.userId, note: flag.reason, createdAt: flag.createdAt }]
+  return { flag, expense, awaiting: flag.awaiting ?? "owner" }
+}
+
+function addEvent(flag: DemoFlag, kind: DisputeEvent["kind"], actorId: string, note: string | null) {
+  flag.events ??= []
+  flag.events.push({ id: randomUUID(), kind, actorId, note, createdAt: new Date().toISOString() })
+}
+
 export async function flagExpense(userId: string, expenseId: string, reason: string) {
   return withDb(async (db) => {
     const expense = db.expenses.find((item) => item.id === expenseId)
     if (!expense) throw new AppError("Expense not found")
     assertMember(db, expense.groupId, userId)
     const share = expense.shares.find((item) => item.userId === userId)?.sharePaise ?? 0
-    const blocked = flagBlockReason(share)
+    const blocked = flagBlockReason({ sharePaise: share, actorId: userId, creatorId: expense.createdBy })
     if (blocked) throw new AppError(blocked)
-    const note = reason.trim()
-    if (note.length > 200) throw new AppError("Keep the note under 200 characters")
-    const open = db.flags.find((flag) => flag.expenseId === expenseId && flag.userId === userId && !flag.resolvedAt)
-    if (open) {
-      open.reason = note || null
-      await persist(db)
-      return open.id
+    const note = cleanNote(reason)
+    let flag = db.flags.find((item) => item.expenseId === expenseId && item.userId === userId && !item.resolvedAt)
+    if (flag) {
+      flag.reason = note
+      flag.awaiting = "owner"
+    } else {
+      flag = {
+        id: randomUUID(),
+        expenseId,
+        userId,
+        reason: note,
+        createdAt: new Date().toISOString(),
+        resolvedAt: null,
+        resolvedBy: null,
+        awaiting: "owner",
+        events: [],
+      }
+      db.flags.push(flag)
     }
-    const flag: DemoFlag = {
-      id: randomUUID(),
-      expenseId,
-      userId,
-      reason: note || null,
-      createdAt: new Date().toISOString(),
-      resolvedAt: null,
-      resolvedBy: null,
-    }
-    db.flags.push(flag)
+    addEvent(flag, "flagged", userId, note)
+    noticeOwners(db, "flagged", userId, expense, note)
     await persist(db)
     return flag.id
   })
 }
 
+export async function requestResolve(userId: string, flagId: string, note: string) {
+  return withDb(async (db) => {
+    const { flag, expense, awaiting } = openDemoFlag(db, flagId)
+    const blocked = requestResolveBlockReason({ actorId: userId, creatorId: expense.createdBy, payerId: expense.payerId, awaiting })
+    if (blocked) throw new AppError(blocked)
+    const value = cleanNote(note)
+    flag.awaiting = "flagger"
+    addEvent(flag, "resolve_requested", userId, value)
+    disputeNotice(db, "resolve_requested", flag.userId, userId, expense, value)
+    await persist(db)
+  })
+}
+
 export async function resolveFlag(userId: string, flagId: string) {
   return withDb(async (db) => {
-    const flag = db.flags.find((item) => item.id === flagId && !item.resolvedAt)
-    if (!flag) throw new AppError("That flag is already resolved")
-    const expense = db.expenses.find((item) => item.id === flag.expenseId)
-    if (!expense) throw new AppError("Expense not found")
-    const blocked = resolveFlagBlockReason({
-      actorId: userId,
-      flaggerId: flag.userId,
-      creatorId: expense.createdBy,
-    })
+    const { flag, expense } = openDemoFlag(db, flagId)
+    const blocked = resolveFlagBlockReason({ actorId: userId, flaggerId: flag.userId })
     if (blocked) throw new AppError(blocked)
     flag.resolvedAt = new Date().toISOString()
     flag.resolvedBy = userId
+    addEvent(flag, "resolved", userId, null)
+    noticeOwners(db, "resolved", userId, expense, null)
+    await persist(db)
+  })
+}
+
+export async function stillWrong(userId: string, flagId: string, note: string) {
+  return withDb(async (db) => {
+    const { flag, expense, awaiting } = openDemoFlag(db, flagId)
+    const blocked = stillWrongBlockReason({ actorId: userId, flaggerId: flag.userId, awaiting })
+    if (blocked) throw new AppError(blocked)
+    const value = cleanNote(note)
+    flag.awaiting = "owner"
+    addEvent(flag, "still_wrong", userId, value)
+    noticeOwners(db, "still_wrong", userId, expense, value)
     await persist(db)
   })
 }
@@ -1115,8 +1191,26 @@ export function buildActivity(
     }
   }
   notices.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const openFlags: OpenFlag[] = details.flatMap((group) =>
+    group.expenses.flatMap((expense) =>
+      expense.flags.map((flag) => ({
+        flag,
+        expenseId: expense.id,
+        groupId: group.id,
+        groupName: group.name,
+        description: expense.description,
+        amountPaise: expense.amountPaise,
+        createdBy: expense.createdBy,
+        payerId: expense.payerId,
+        updatedAt: expense.updatedAt,
+      })),
+    ),
+  )
+  const everyone = details.flatMap((group) => group.members)
+  const nameOf = (id: string) => everyone.find((member) => member.id === id)?.displayName ?? "Someone"
   return {
     pending,
+    disputes: disputeTasks(openFlags, userId, nameOf),
     notices,
     feed: feed.filter((item) => !pending.some((itemPending) => itemPending.id === item.id)),
   }

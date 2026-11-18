@@ -7,7 +7,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Start every read at once. The proxy already turned away signed-out visitors.
   const [user, groups, unseen] = await Promise.all([getSessionUser(), listGroups(), countUnseenNotices()])
   if (!user) redirect("/login")
-  const pending = groups.reduce((sum, group) => sum + group.pendingForMe, 0) + unseen
+  const pending = groups.reduce((sum, group) => sum + group.pendingForMe + group.disputesForMe, 0) + unseen
   return (
     <Shell user={user} groups={groups} pending={pending}>
       {children}

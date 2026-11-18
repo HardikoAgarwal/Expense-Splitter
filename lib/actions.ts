@@ -7,6 +7,7 @@ import { errorMessage } from "@/lib/errors"
 import {
   notifyExpenseAdded,
   notifyExpenseDeleted,
+  notifyDispute,
   notifyExpenseEdited,
   notifySettlementRequested,
   notifySettlementResolved,
@@ -157,11 +158,36 @@ export async function deleteExpenseAction(expenseId: string) {
 }
 
 export async function flagExpenseAction(expenseId: string, reason: string) {
-  return run(() => queries.flagExpense(expenseId, reason))
+  return disputeStep("flagged", () => queries.flagExpense(expenseId, reason), reason)
 }
 
 export async function resolveFlagAction(flagId: string) {
-  return run(() => queries.resolveFlag(flagId))
+  return disputeStep("resolved", () => queries.resolveFlag(flagId), null)
+}
+
+/** The person who added the expense asks the flagger to take another look and resolve. */
+export async function requestResolveAction(flagId: string, note: string) {
+  return disputeStep("resolve_requested", () => queries.requestResolve(flagId, note), note)
+}
+
+/** The flagger was asked to resolve but it is still wrong. */
+export async function stillWrongAction(flagId: string, note: string) {
+  return disputeStep("still_wrong", () => queries.stillWrong(flagId, note), note)
+}
+
+async function disputeStep(
+  step: Parameters<typeof notifyDispute>[1],
+  fn: () => Promise<queries.DisputeContext | null>,
+  note: string | null,
+): Promise<ActionResult<undefined>> {
+  const result = await run(fn)
+  if (!result.ok) return result
+  const context = result.data
+  if (context) {
+    const user = await queries.getSessionUser()
+    if (user) notifyLater(() => notifyDispute(user, step, context, note?.trim() || null))
+  }
+  return { ok: true, data: undefined }
 }
 
 export async function markNoticeSeenAction(noticeId: string) {

@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
@@ -9,7 +10,6 @@ import { BackLink } from "@/components/back-link"
 import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseDetail } from "@/components/expense-detail"
 import { ExpenseFilterBar } from "@/components/expense-filters"
-import { Notice } from "@/components/notice"
 import { Person, PersonStack } from "@/components/person"
 import { ShowList } from "@/components/show-list"
 import { MessagePreview, ShareActions } from "@/components/share-actions"
@@ -27,6 +27,7 @@ import {
   revokeInvitesAction,
 } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
+import { disputeChip, disputeNeedsMe } from "@/lib/disputes"
 import { EMPTY_FILTERS, filterExpenses, type ExpenseFilters } from "@/lib/expense-filters"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
@@ -40,7 +41,18 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const [tab, setTab] = useState<"expenses" | "balances">("expenses")
   const [filters, setFilters] = useState<ExpenseFilters>(EMPTY_FILTERS)
   const visible = filterExpenses(group.expenses, filters)
-  const [openExpenseId, setOpenExpenseId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  // Links from Activity: ?expense=<id> opens the detail, ?edit=<id> opens the edit sheet.
+  const [openExpenseId, setOpenExpenseId] = useState<string | null>(() => searchParams.get("expense"))
+  const editId = searchParams.get("edit")
+  const linked = Boolean(editId || searchParams.get("expense"))
+  useEffect(() => {
+    if (!linked) return
+    router.replace(`/groups/${group.id}`, { scroll: false })
+    const target = editId ? group.expenses.find((expense) => expense.id === editId) : null
+    if (target && target.createdBy === user.id && !target.locked) openExpense(group.id, target)
+  }, [linked, editId, group, user.id, router, openExpense])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
@@ -55,7 +67,6 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const monthTotal = group.expenses
     .filter((expense) => expense.expenseDate.startsWith(month.slice(0, 7)))
     .reduce((sum, expense) => sum + expense.amountPaise, 0)
-  const disputedCount = group.expenses.filter((expense) => expense.disputed).length
 
   function invitePeople() {
     setInviteOpen(true)
@@ -178,11 +189,6 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
       <div className="px-4 md:px-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-start lg:gap-8">
         <div className="space-y-6">
-          {disputedCount > 0 ? (
-            <Notice tone="warning" title={`${disputedCount} disputed`}>
-              Still counted in balances.
-            </Notice>
-          ) : null}
           <div className="space-y-6 lg:hidden">
             <BalanceHero group={group} userId={user.id} />
             {summaryLink}
@@ -488,7 +494,11 @@ function ExpenseList({
                   <span className="truncate font-medium">{expense.description}</span>
                   {expense.disputed ? (
                     <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-semibold text-warning">
-                      Disputed
+                      {disputeChip(
+                        expense.flags.find((flag) => disputeNeedsMe(flag, expense, userId)) ?? expense.flags[0],
+                        userId,
+                        (id) => group.members.find((member) => member.id === id)?.displayName ?? "them",
+                      )}
                     </span>
                   ) : null}
                   {expense.locked ? <LockIcon className="size-3.5 text-muted-foreground" /> : null}

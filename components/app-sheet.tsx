@@ -32,6 +32,8 @@ export function AppSheet({
       <DialogContent
         className={cn(
           "flex w-[calc(100%-1.5rem)] max-w-md flex-col gap-0 overflow-hidden rounded-[20px] p-0 ring-1 ring-border",
+          // A dialog opened from this one (a note, a confirm) takes the focus; this one steps back.
+          "transition-[opacity,scale] data-[nested-dialog-open]:scale-[0.96] data-[nested-dialog-open]:opacity-0",
           "top-[calc(var(--vv-offset-top,0px)+var(--vv-height,100dvh)/2)] max-h-[calc(var(--vv-height,100dvh)-1.5rem)]",
           tall && "max-h-[calc(var(--vv-height,100dvh)-1rem)] sm:max-w-lg",
         )}

@@ -8,7 +8,7 @@ export default async function ActivityPage() {
   if (!user) redirect("/login")
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <ActivityScreen pending={activity.pending} notices={activity.notices} feed={activity.feed} />
+      <ActivityScreen pending={activity.pending} disputes={activity.disputes} notices={activity.notices} feed={activity.feed} />
     </div>
   )
 }

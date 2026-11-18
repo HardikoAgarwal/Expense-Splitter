@@ -123,6 +123,14 @@ function ExpenseForm({
   const canSave =
     !locked && !hitsLock && !saving && Boolean(description.trim()) && shareError === null && Boolean(shares)
 
+  // After fixing a disputed expense, the next step is asking the flagger to resolve it.
+  function updatedMessage() {
+    const waiting = expense?.flags.find((flag) => flag.awaiting === "owner")
+    if (!waiting) return "Expense updated"
+    const name = group.members.find((member) => member.id === waiting.userId)?.displayName.split(" ")[0] ?? "them"
+    return `Expense updated. Now ask ${name} to resolve the dispute`
+  }
+
   function save() {
     if (!canSave || !shares || totalPaise === null) return
     // The sheet closes and the toast shows only once the group list has the new numbers.
@@ -138,7 +146,7 @@ function ExpenseForm({
           category,
           shares,
         }),
-      { success: expense ? "Expense updated" : "Expense added", onSuccess: onDone },
+      { success: expense ? updatedMessage() : "Expense added", onSuccess: onDone },
     )
   }
 

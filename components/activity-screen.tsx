@@ -2,31 +2,44 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { CheckCheckIcon } from "lucide-react"
 
+import { DisputeActions } from "@/components/dispute"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
 import { Section } from "@/components/section"
 import { ShowList } from "@/components/show-list"
 import { Button } from "@/components/ui/button"
 import { markNoticesSeenAction, resolveSettlementAction } from "@/lib/actions"
+import { isTaskNotice } from "@/lib/disputes"
 import { noticeTitle } from "@/lib/expense-changes"
 import { formatINR } from "@/lib/money"
-import type { ActivityItem, ShareNotice } from "@/lib/types"
+import type { ActivityItem, DisputeTask, ShareNotice } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
 export function ActivityScreen({
   pending,
-  notices,
+  disputes,
+  notices: allNotices,
   feed,
 }: {
   pending: ActivityItem[]
+  disputes: DisputeTask[]
   notices: ShareNotice[]
   feed: ActivityItem[]
 }) {
   const { pending: busy, run } = useAction()
   const seenRunner = useAction()
+  // Dispute steps are shown under Needs you; their notices are only history, so mark them seen quietly.
+  const taskNoticeIds = allNotices.filter((notice) => isTaskNotice(notice.kind) && !notice.seen).map((notice) => notice.id)
+  const taskNoticeKey = taskNoticeIds.join(",")
+  useEffect(() => {
+    if (!taskNoticeKey) return
+    void markNoticesSeenAction(taskNoticeKey.split(","))
+  }, [taskNoticeKey])
+  const notices = allNotices.filter((notice) => !isTaskNotice(notice.kind))
   const markAll = useAction()
   // Notices that were new when this visit started keep a "New" tag until you leave,
   // even after they are marked seen in the background.
@@ -110,7 +123,7 @@ export function ActivityScreen({
             {freshNotices.map((notice) => (
               <li key={notice.id} data-notice-id={notice.id}>
                 <Link
-                  href={`/groups/${notice.groupId}`}
+                  href={notice.expenseId ? `/groups/${notice.groupId}?expense=${notice.expenseId}` : `/groups/${notice.groupId}`}
                   className={cn(
                     "flex items-center gap-3 rounded-[16px] px-3 py-3 ring-1 transition hover:ring-primary/30",
                     notice.seen ? "bg-card ring-border" : "bg-accent/50 ring-primary/20",
@@ -122,7 +135,7 @@ export function ActivityScreen({
                       {noticeTitle(notice.kind, notice.actorName.split(" ")[0], notice.description)}
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      {notice.kind === "added" ? `Your share ${formatINR(notice.sharePaise)}` : notice.summary} ·{" "}
+                      {noticeDetail(notice)}
                       {notice.groupName}
                     </span>
                   </span>
@@ -135,10 +148,13 @@ export function ActivityScreen({
       ) : null}
 
       <Section title="Needs you">
-        {pending.length === 0 ? (
-          <Notice title="Inbox clear">Payments to you will wait here.</Notice>
+        {pending.length === 0 && disputes.length === 0 ? (
+          <Notice title="Inbox clear">Payments to approve and disputes to sort out show up here.</Notice>
         ) : (
           <div className="space-y-4">
+            {disputes.map((task) => (
+              <DisputeTaskCard key={task.flagId} task={task} />
+            ))}
             {pending.map((item) => (
               <article key={item.id} className="rounded-[16px] bg-card p-4 ring-1 ring-border">
                 <div className="flex items-center gap-3">
@@ -196,5 +212,64 @@ export function ActivityScreen({
         )}
       </Section>
     </div>
+  )
+}
+
+function noticeDetail(notice: ShareNotice) {
+  if (notice.kind === "added") return `Your share ${formatINR(notice.sharePaise)} · `
+  if (notice.summary) {
+    const quoted = notice.kind === "edited" || notice.kind === "deleted" ? notice.summary : `“${notice.summary}”`
+    return `${quoted} · `
+  }
+  return ""
+}
+
+/** One open dispute where it's your move: who, what, their note, and the next step. */
+function DisputeTaskCard({ task }: { task: DisputeTask }) {
+  const router = useRouter()
+  const other = task.role === "owner" ? { id: task.flaggerId, name: task.flaggerName } : { id: task.ownerId, name: task.ownerName }
+  const otherFirst = other.name.split(" ")[0]
+  const title =
+    task.role === "flagger"
+      ? task.updatedSinceRaised
+        ? `${otherFirst} updated ${task.description} and asked you to resolve`
+        : `${otherFirst} asked you to resolve ${task.description}`
+      : task.lastKind === "still_wrong"
+        ? `${otherFirst} says ${task.description} is still wrong`
+        : `${otherFirst} flagged ${task.description}`
+  const quote = task.role === "owner" ? (task.lastKind === "still_wrong" ? task.note : task.reason) : task.note
+  return (
+    <article className="rounded-[16px] bg-card p-4 ring-1 ring-warning/30">
+      <Link href={`/groups/${task.groupId}?expense=${task.expenseId}`} className="flex items-start gap-3">
+        <Person id={other.id} name={other.name} />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{title}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {formatINR(task.amountPaise)} · {task.groupName}
+          </p>
+        </div>
+      </Link>
+      {quote ? <p className="mt-3 border-l-2 border-warning/50 pl-3 text-sm">“{quote}”</p> : null}
+      {task.role === "flagger" && task.reason ? (
+        <p className="mt-2 text-xs text-muted-foreground">You flagged: “{task.reason}”</p>
+      ) : null}
+      {task.role === "owner" && task.updatedSinceRaised ? (
+        <p className="mt-2 text-xs text-muted-foreground">You&apos;ve updated it since. Ask {otherFirst} to take another look.</p>
+      ) : null}
+      <DisputeActions
+        className="mt-4"
+        view={{
+          flagId: task.flagId,
+          description: task.description,
+          role: task.role,
+          awaiting: task.role === "owner" ? "owner" : "flagger",
+          flaggerName: task.flaggerName,
+          ownerName: task.ownerName,
+          canEdit: task.canEdit,
+          updatedSinceRaised: task.updatedSinceRaised,
+        }}
+        onEdit={() => router.push(`/groups/${task.groupId}?edit=${task.expenseId}`)}
+      />
+    </article>
   )
 }

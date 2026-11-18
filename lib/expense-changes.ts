@@ -1,5 +1,6 @@
 import { categoryLabel } from "@/lib/categories"
 import { formatDay, formatINR } from "@/lib/money"
+import type { NoticeKind } from "@/lib/types"
 
 /** What an expense looked like at one moment; enough to describe a change to it. */
 export type ExpenseSnapshot = {
@@ -14,7 +15,7 @@ export type ExpenseSnapshot = {
   shares: { userId: string; sharePaise: number }[]
 }
 
-export type NoticeKind = "added" | "edited" | "deleted"
+export type { NoticeKind }
 
 const shareOf = (snapshot: ExpenseSnapshot, userId: string) =>
   snapshot.shares.find((share) => share.userId === userId)?.sharePaise ?? 0
@@ -79,7 +80,20 @@ export function describeDelete(before: ExpenseSnapshot, recipientId: string): st
 
 /** The headline for a notice, e.g. "Aarav changed Groceries". */
 export function noticeTitle(kind: NoticeKind, actorFirstName: string, description: string) {
-  if (kind === "edited") return `${actorFirstName} changed ${description}`
-  if (kind === "deleted") return `${actorFirstName} deleted ${description}`
-  return `${actorFirstName} added you to ${description}`
+  switch (kind) {
+    case "edited":
+      return `${actorFirstName} changed ${description}`
+    case "deleted":
+      return `${actorFirstName} deleted ${description}`
+    case "flagged":
+      return `${actorFirstName} flagged ${description}`
+    case "resolve_requested":
+      return `${actorFirstName} asked you to resolve ${description}`
+    case "still_wrong":
+      return `${actorFirstName} says ${description} is still wrong`
+    case "resolved":
+      return `${actorFirstName} resolved the dispute on ${description}`
+    default:
+      return `${actorFirstName} added you to ${description}`
+  }
 }

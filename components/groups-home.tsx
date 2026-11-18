@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { motion, useReducedMotion } from "framer-motion"
-import { ArrowDownLeftIcon, ArrowUpRightIcon, BellIcon, ChevronRightIcon, UsersIcon } from "lucide-react"
+import { ArrowDownLeftIcon, ArrowUpRightIcon, ChevronRightIcon, UsersIcon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { Person, PersonStack } from "@/components/person"
@@ -20,12 +20,10 @@ import { cn } from "@/lib/utils"
 export function GroupsHome({
   user,
   groups,
-  unseen = 0,
 }: {
   user: SessionUser
   groups: GroupCard[]
   /** Expenses other people added you to that you have not opened yet. */
-  unseen?: number
 }) {
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
@@ -39,8 +37,6 @@ export function GroupsHome({
 
   const owed = groups.reduce((sum, group) => sum + Math.max(group.myNetPaise, 0), 0)
   const owe = groups.reduce((sum, group) => sum + Math.max(-group.myNetPaise, 0), 0)
-  const approvals = groups.reduce((sum, group) => sum + group.pendingForMe, 0)
-  const disputed = groups.reduce((sum, group) => sum + group.disputedCount, 0)
 
   function create(event: React.FormEvent) {
     event.preventDefault()
@@ -98,7 +94,7 @@ export function GroupsHome({
       </div>
 
       {groups.length > 0 ? (
-        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+        <div className="mt-6 grid grid-cols-2 gap-3 md:gap-4">
           <Stat
             label="You are owed"
             value={formatINR(owed)}
@@ -106,31 +102,6 @@ export function GroupsHome({
             icon={<ArrowDownLeftIcon className="size-4" />}
           />
           <Stat label="You owe" value={formatINR(owe)} tone="negative" icon={<ArrowUpRightIcon className="size-4" />} />
-          {approvals + disputed + unseen > 0 ? (
-            <Link
-              href="/activity"
-              className="col-span-2 flex items-center gap-3 rounded-[16px] bg-warning/12 px-4 py-3.5 ring-1 ring-warning/25 transition hover:bg-warning/18 md:col-span-1 md:flex-col md:items-start md:gap-1"
-            >
-              <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <BellIcon className="size-4 text-warning" /> Needs you
-              </span>
-              <span className="flex-1 text-sm font-semibold md:text-lg">
-                {[
-                  approvals ? `${approvals} to approve` : null,
-                  unseen ? `${unseen} new for you` : null,
-                  disputed ? `${disputed} disputed` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-              <ChevronRightIcon className="size-4 text-muted-foreground md:hidden" />
-            </Link>
-          ) : (
-            <div className="col-span-2 hidden rounded-[16px] bg-card px-4 py-3.5 ring-1 ring-border md:col-span-1 md:block">
-              <span className="text-sm font-medium text-muted-foreground">Needs you</span>
-              <p className="mt-1 text-lg font-semibold">All clear</p>
-            </div>
-          )}
         </div>
       ) : null}
 
@@ -183,9 +154,9 @@ export function GroupsHome({
                           {group.pendingForMe} to approve
                         </span>
                       ) : null}
-                      {group.disputedCount > 0 ? (
+                      {group.disputesForMe > 0 ? (
                         <span className="rounded-full bg-negative/10 px-2.5 py-1 text-xs font-semibold text-negative">
-                          {group.disputedCount} disputed
+                          {group.disputesForMe} disputed
                         </span>
                       ) : null}
                     </div>

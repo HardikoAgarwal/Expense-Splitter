@@ -237,3 +237,36 @@ export async function notifyExpenseDeleted(actor: SessionUser, before: ExpenseSn
     ),
   )
 }
+
+type DisputeStep = "flagged" | "resolve_requested" | "resolved" | "still_wrong"
+
+/**
+ * Push for a dispute step. The Activity notice is written by the database function,
+ * so this only sends the push: owner side (creator + payer) or the flagger.
+ */
+export async function notifyDispute(
+  actor: SessionUser,
+  step: DisputeStep,
+  context: { expenseId: string; groupId: string; description: string; createdBy: string; payerId: string; flaggerId: string },
+  note: string | null,
+) {
+  if (!pushEnabled()) return
+  const name = first(actor.displayName)
+  const recipients =
+    step === "resolve_requested" ? [context.flaggerId] : [...new Set([context.createdBy, context.payerId])]
+  const targets = recipients.filter((id) => id !== actor.id)
+  if (targets.length === 0) return
+  const group = await groupName(context.groupId)
+  const body = {
+    flagged: note ? `“${note}” · ${group}. Fix it, then ask ${name} to resolve.` : `In ${group}. Fix it, then ask ${name} to resolve.`,
+    resolve_requested: note ? `“${note}” · ${group}. Check it and resolve.` : `In ${group}. Check it and resolve.`,
+    resolved: `All sorted in ${group}.`,
+    still_wrong: note ? `“${note}” · ${group}` : `In ${group}. Take another look.`,
+  }[step]
+  await sendPush(targets, {
+    title: noticeTitle(step, name, context.description),
+    body,
+    url: `/activity`,
+    tag: `dispute-${context.expenseId}`,
+  })
+}

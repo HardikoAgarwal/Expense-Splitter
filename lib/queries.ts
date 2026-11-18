@@ -203,6 +203,12 @@ export async function markNoticeSeen(noticeId: string) {
   return demo.markNoticeSeen(user.id, noticeId)
 }
 
+export async function markNoticesSeen(noticeIds: string[] | null) {
+  const user = await actorOrThrow()
+  if (!isDemoMode()) return remote.markNoticesSeen(noticeIds)
+  return demo.markNoticesSeen(user.id, noticeIds)
+}
+
 export async function suggestSettlement(groupId: string, otherUserId: string, upToDate: string) {
   if (!isDemoMode()) return remote.suggestSettlement(groupId, otherUserId, upToDate)
   const user = await actor()

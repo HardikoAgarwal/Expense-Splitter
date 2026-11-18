@@ -1,13 +1,15 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { CheckCheckIcon } from "lucide-react"
 
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
 import { Section } from "@/components/section"
 import { ShowList } from "@/components/show-list"
 import { Button } from "@/components/ui/button"
-import { markNoticeSeenAction, resolveSettlementAction } from "@/lib/actions"
+import { markNoticesSeenAction, resolveSettlementAction } from "@/lib/actions"
 import { formatINR } from "@/lib/money"
 import type { ActivityItem, ShareNotice } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
@@ -23,6 +25,54 @@ export function ActivityScreen({
   feed: ActivityItem[]
 }) {
   const { pending: busy, run } = useAction()
+  const seenRunner = useAction()
+  const markAll = useAction()
+  // Notices that were new when this visit started keep a "New" tag until you leave,
+  // even after they are marked seen in the background.
+  const [fresh] = useState(() => new Set(notices.filter((notice) => !notice.seen).map((notice) => notice.id)))
+  const freshNotices = notices.filter((notice) => fresh.has(notice.id))
+  const unseenIds = notices.filter((notice) => !notice.seen).map((notice) => notice.id)
+  const listRef = useRef<HTMLUListElement>(null)
+  const queued = useRef(new Set<string>())
+  const sent = useRef(new Set<string>())
+  const runSeen = seenRunner.run
+
+  // Mark a notice seen once at least half of it has been on screen for a moment.
+  useEffect(() => {
+    const list = listRef.current
+    if (!list || unseenIds.length === 0 || typeof IntersectionObserver === "undefined") return
+    let timer: number | undefined
+    const flush = () => {
+      const ids = [...queued.current].filter((id) => !sent.current.has(id))
+      queued.current.clear()
+      if (ids.length === 0) return
+      for (const id of ids) sent.current.add(id)
+      runSeen(() => markNoticesSeenAction(ids), { toastError: false })
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.noticeId
+          if (entry.isIntersecting && id) {
+            queued.current.add(id)
+            observer.unobserve(entry.target)
+          }
+        }
+        window.clearTimeout(timer)
+        timer = window.setTimeout(flush, 900)
+      },
+      { threshold: 0.5 },
+    )
+    for (const element of list.querySelectorAll<HTMLElement>("[data-notice-id]")) {
+      if (unseenIds.includes(element.dataset.noticeId ?? "")) observer.observe(element)
+    }
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timer)
+      flush()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-observe only when the unseen set changes
+  }, [unseenIds.join(","), runSeen])
 
   function resolve(id: string, approve: boolean) {
     run(() => resolveSettlementAction(id, approve), {
@@ -35,31 +85,49 @@ export function ActivityScreen({
       <p className="text-sm font-medium tracking-[0.18em] text-primary uppercase">Activity</p>
       <h1 className="mt-2 text-[1.75rem] font-semibold tracking-tight">What moved</h1>
 
-      {notices.some((notice) => !notice.seen) ? (
-        <Section title="New for you">
-          <ul className="space-y-2">
-            {notices
-              .filter((notice) => !notice.seen)
-              .map((notice) => (
-                <li key={notice.id}>
-                  <Link
-                    href={`/groups/${notice.groupId}`}
-                    onClick={() => void markNoticeSeenAction(notice.id)}
-                    className="flex items-center gap-3 rounded-[16px] bg-card px-3 py-3 ring-1 ring-border"
-                  >
-                    <Person id={notice.actorId} name={notice.actorName} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">
-                        {notice.actorName.split(" ")[0]} added you to {notice.description}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        Your share {formatINR(notice.sharePaise)} · {notice.groupName}
-                      </span>
+      {freshNotices.length > 0 ? (
+        <Section
+          title="New for you"
+          action={
+            unseenIds.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary"
+                pending={markAll.pending}
+                onClick={() => markAll.run(() => markNoticesSeenAction(null), { success: "All caught up" })}
+              >
+                {markAll.pending ? null : <CheckCheckIcon />}
+                Mark all as seen
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">All caught up</span>
+            )
+          }
+        >
+          <ul ref={listRef} className="space-y-2">
+            {freshNotices.map((notice) => (
+              <li key={notice.id} data-notice-id={notice.id}>
+                <Link
+                  href={`/groups/${notice.groupId}`}
+                  className={cn(
+                    "flex items-center gap-3 rounded-[16px] px-3 py-3 ring-1 transition hover:ring-primary/30",
+                    notice.seen ? "bg-card ring-border" : "bg-accent/50 ring-primary/20",
+                  )}
+                >
+                  <Person id={notice.actorId} name={notice.actorName} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">
+                      {notice.actorName.split(" ")[0]} added you to {notice.description}
                     </span>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">New</span>
-                  </Link>
-                </li>
-              ))}
+                    <span className="block text-xs text-muted-foreground">
+                      Your share {formatINR(notice.sharePaise)} · {notice.groupName}
+                    </span>
+                  </span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">New</span>
+                </Link>
+              </li>
+            ))}
           </ul>
         </Section>
       ) : null}

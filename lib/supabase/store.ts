@@ -511,6 +511,32 @@ export async function markNoticeSeen(noticeId: string) {
   fail(error)
 }
 
+/**
+ * Marks the given notices (or every unseen one when ids is null) as seen.
+ * Uses one RPC call; if the 20261118120000 migration has not been applied yet,
+ * falls back to the older one-notice-at-a-time RPC.
+ */
+export async function markNoticesSeen(noticeIds: string[] | null) {
+  const supabase = await client()
+  const { error } = await supabase.rpc("mark_notices_seen", { p_notice_ids: noticeIds })
+  if (!error) return
+  const missing = error.code === "PGRST202" || /mark_notices_seen/.test(error.message)
+  if (!missing) fail(error)
+  let ids = noticeIds
+  if (!ids) {
+    const user = await currentAuthUser()
+    const { data, error: listError } = await supabase
+      .from("share_notices")
+      .select("id")
+      .eq("user_id", user?.id ?? "")
+      .is("seen_at", null)
+    fail(listError)
+    ids = (data ?? []).map((row) => row.id as string)
+  }
+  const results = await Promise.all(ids.map((id) => supabase.rpc("mark_notice_seen", { p_notice_id: id })))
+  fail(results.find((result) => result.error)?.error ?? null)
+}
+
 export async function suggestSettlement(groupId: string, otherUserId: string, upToDate: string) {
   const supabase = await client()
   const { data, error } = await supabase.rpc("pairwise_i_owe", {

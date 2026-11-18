@@ -877,6 +877,20 @@ export async function markNoticeSeen(userId: string, noticeId: string) {
   })
 }
 
+export async function markNoticesSeen(userId: string, noticeIds: string[] | null) {
+  return withDb(async (db) => {
+    const now = new Date().toISOString()
+    let changed = 0
+    for (const notice of db.notices) {
+      if (notice.userId !== userId || notice.seenAt) continue
+      if (noticeIds && !noticeIds.includes(notice.id)) continue
+      notice.seenAt = now
+      changed += 1
+    }
+    if (changed) await persist(db)
+  })
+}
+
 export async function suggestSettlement(userId: string, groupId: string, otherUserId: string, upToDate: string) {
   return withDb((db) => {
     assertMember(db, groupId, userId)

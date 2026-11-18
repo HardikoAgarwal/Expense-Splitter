@@ -121,6 +121,11 @@ export async function markNoticeSeenAction(noticeId: string) {
   return run(() => queries.markNoticeSeen(noticeId))
 }
 
+/** Pass null to mark every unseen notice. */
+export async function markNoticesSeenAction(noticeIds: string[] | null) {
+  return run(() => queries.markNoticesSeen(noticeIds))
+}
+
 export async function suggestSettlementAction(groupId: string, otherUserId: string, upToDate: string) {
   try {
     const data = await queries.suggestSettlement(groupId, otherUserId, upToDate)

@@ -191,79 +191,37 @@ export function SettleScreen({
                 />
               </Field>
 
-              <div aria-live="polite">
-                <p className={cn(SECTION_TITLE, "mb-2.5")}>Balance through {formatDay(upToDate)}</p>
+              <section aria-live="polite" aria-label="Balance">
+                <p className={cn(SECTION_TITLE, "mb-3")}>Balance through {formatDay(upToDate)}</p>
                 {!breakdown ? (
                   <p className="text-sm text-muted-foreground">Working out the balance…</p>
                 ) : breakdown.direction === "i-owe" ? (
-                  <>
-                    <p className="text-lg font-medium">
-                      You owe {firstName} <span className="money text-negative">{formatINR(breakdown.owedPaise)}</span>
-                    </p>
+                  <dl className="space-y-2.5 text-[15px]">
+                    <BalanceRow label={`You owe ${firstName}`} value={formatINR(breakdown.owedPaise)} />
                     {breakdown.pendingPaise > 0 ? (
-                      <p className="mt-1.5 text-sm text-muted-foreground">
-                        {formatINR(breakdown.pendingPaise)} you sent is waiting for approval
-                        {breakdown.remainingPaise > 0
-                          ? `, so ${formatINR(breakdown.remainingPaise)} is left to pay.`
-                          : `. That covers it; it settles once ${firstName} approves.`}
-                      </p>
+                      <>
+                        <BalanceRow
+                          label="Sent, awaiting approval"
+                          value={`−${formatINR(breakdown.pendingPaise)}`}
+                          className="text-muted-foreground"
+                        />
+                        <div className="border-t" aria-hidden />
+                        <BalanceRow
+                          label="Left to pay"
+                          value={breakdown.remainingPaise > 0 ? formatINR(breakdown.remainingPaise) : "₹0"}
+                          className="font-semibold"
+                          valueClassName={breakdown.remainingPaise > 0 ? "text-negative" : "text-positive"}
+                        />
+                      </>
                     ) : null}
-                  </>
+                  </dl>
                 ) : (
                   <p className="text-lg font-medium">You and {firstName} are square.</p>
                 )}
-              </div>
-
-              {canPay ? (
-                <Field>
-                  <div className="flex items-center justify-between gap-2">
-                    <FieldLabel htmlFor="settle-amount">Amount to be paid</FieldLabel>
-                    {enteredPaise !== remaining ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAmount(paiseToInput(remaining))
-                          setUpiOpened(false)
-                        }}
-                        className="rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground hover:bg-accent/70"
-                      >
-                        Full amount {formatINR(remaining)}
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-lg text-muted-foreground">₹</span>
-                    <Input
-                      id="settle-amount"
-                      inputMode="decimal"
-                      value={amount}
-                      placeholder="0"
-                      onChange={(event) => {
-                        setAmount(event.target.value.replace(/[^\d.]/g, ""))
-                        setUpiOpened(false)
-                      }}
-                      aria-describedby="settle-amount-result"
-                      className="money h-14 rounded-[12px] pr-3 pl-8 text-2xl"
-                    />
-                  </div>
-                  <p id="settle-amount-result" aria-live="polite" className="flex items-center justify-between gap-2 text-sm">
-                    {enteredPaise <= 0 ? (
-                      <span className="text-muted-foreground">Enter the amount you&apos;re paying.</span>
-                    ) : enteredPaise < remaining ? (
-                      <>
-                        <span className="text-muted-foreground">Remaining after this</span>
-                        <span className="money font-semibold">{formatINR(remaining - enteredPaise)}</span>
-                      </>
-                    ) : enteredPaise === remaining ? (
-                      <span className="flex items-center gap-1.5 font-medium text-positive">
-                        <CircleCheckIcon className="size-4" /> Settles fully
-                      </span>
-                    ) : (
-                      <span className="text-warning">That&apos;s {formatINR(enteredPaise - remaining)} more than you owe.</span>
-                    )}
-                  </p>
-                </Field>
-              ) : null}
+                {breakdown?.direction === "i-owe" && breakdown.remainingPaise === 0 ? (
+                  <p className="mt-3 text-sm text-muted-foreground">That covers it. It settles once {firstName} approves.</p>
+                ) : null}
+              </section>
 
               {disputed.length > 0 ? (
                 <Notice tone="warning" title="Disputed in this range">
@@ -273,56 +231,90 @@ export function SettleScreen({
 
               {canPay ? (
                 <>
-              <ol className="space-y-3">
-                {otherUpi ? (
-                  <Step number={1} title={desktop ? `Scan to pay ${firstName}` : `Pay ${firstName} with UPI`} done={upiOpened}>
-                    <UpiStep
-                      vpa={otherUpi}
-                      name={other?.displayName ?? firstName}
-                      amountPaise={enteredPaise}
-                      opened={upiOpened}
-                      onOpened={() => setUpiOpened(true)}
-                    />
-                  </Step>
-                ) : null}
-                <Step
-                  number={otherUpi ? 2 : 1}
-                  title={otherUpi ? `Tell ${firstName} you've paid` : `Pay ${firstName}, then mark it paid`}
-                  muted={Boolean(otherUpi) && !confirmIsPrimary}
-                >
-                  {!otherUpi ? (
-                    <p className="mb-3 text-sm text-muted-foreground">
-                      Pay in cash or any app. {firstName} hasn&apos;t added a UPI ID yet, so ask them to add one in Account to pay in one tap next time.
-                    </p>
-                  ) : (
-                    <p className="mb-3 text-sm text-muted-foreground">
-                      {upiOpened
-                        ? `Done paying? Let ${firstName} know so they can approve it.`
-                        : "Paid in cash or another app? You can skip step 1."}
-                    </p>
-                  )}
-                  <Button
-                    type="submit"
-                    size="xl"
-                    variant={confirmIsPrimary ? "default" : "outline"}
-                    className="w-full"
-                    disabled={!validAmount}
-                    pending={saving}
-                  >
-                    {saving ? (
-                      "Sending…"
+                  <div className="space-y-4">
+                    <Field>
+                      <FieldLabel htmlFor="settle-amount">Amount to be paid</FieldLabel>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-lg text-muted-foreground">₹</span>
+                        <Input
+                          id="settle-amount"
+                          inputMode="decimal"
+                          value={amount}
+                          placeholder="0"
+                          onChange={(event) => {
+                            setAmount(event.target.value.replace(/[^\d.]/g, ""))
+                            setUpiOpened(false)
+                          }}
+                          aria-describedby="settle-amount-result"
+                          className="money h-14 rounded-[12px] pr-3 pl-8 text-2xl"
+                        />
+                      </div>
+                      {enteredPaise !== remaining ? (
+                        <p id="settle-amount-result" aria-live="polite" className="flex items-center justify-between gap-2 text-sm">
+                          {enteredPaise <= 0 ? (
+                            <span className="text-muted-foreground">Enter the amount you&apos;re paying.</span>
+                          ) : enteredPaise < remaining ? (
+                            <>
+                              <span className="text-muted-foreground">Left after this payment</span>
+                              <span className="money font-semibold">{formatINR(remaining - enteredPaise)}</span>
+                            </>
+                          ) : (
+                            <span className="text-warning">That&apos;s {formatINR(enteredPaise - remaining)} more than you owe.</span>
+                          )}
+                        </p>
+                      ) : null}
+                    </Field>
+
+                    {otherUpi ? (
+                      <UpiPay
+                        vpa={otherUpi}
+                        name={other?.displayName ?? firstName}
+                        amountPaise={enteredPaise}
+                        opened={upiOpened}
+                        onOpened={() => setUpiOpened(true)}
+                      />
                     ) : (
-                      <>
-                        <CircleCheckIcon />
-                        I&apos;ve paid — ask {firstName} to approve
-                      </>
+                      <p className="text-sm text-muted-foreground">
+                        {firstName} hasn&apos;t added a UPI ID yet. Ask them to add one in Account so you can pay in one tap.
+                      </p>
                     )}
-                  </Button>
-                </Step>
-              </ol>
-              <p className="text-center text-xs text-muted-foreground">
-                It counts once {firstName} approves. That locks expenses through {formatDay(upToDate)}.
-              </p>
+                  </div>
+
+                  <section
+                    aria-label={`Tell ${firstName} you've paid`}
+                    className={cn(
+                      "rounded-[16px] bg-card p-4 ring-1 transition",
+                      confirmIsPrimary ? "ring-primary/40" : "ring-border",
+                    )}
+                  >
+                    <p className="mb-3 text-sm text-muted-foreground">
+                      {otherUpi && upiOpened
+                        ? `Done paying? Let ${firstName} know so they can approve it.`
+                        : otherUpi
+                          ? "Paid via UPI, cash or another app?"
+                          : `Paid ${firstName} in cash or another app?`}
+                    </p>
+                    <Button
+                      type="submit"
+                      size="xl"
+                      variant={confirmIsPrimary ? "default" : "outline"}
+                      className="w-full"
+                      disabled={!validAmount}
+                      pending={saving}
+                    >
+                      {saving ? (
+                        "Sending…"
+                      ) : (
+                        <>
+                          <CircleCheckIcon />
+                          I&apos;ve paid — ask {firstName} to approve
+                        </>
+                      )}
+                    </Button>
+                    <p className="mt-3 text-center text-xs text-muted-foreground">
+                      It counts once {firstName} approves and locks expenses through {formatDay(upToDate)}.
+                    </p>
+                  </section>
                 </>
               ) : null}
             </form>
@@ -477,42 +469,26 @@ function ApproverView({
   )
 }
 
-function Step({
-  number,
-  title,
-  done = false,
-  muted = false,
-  children,
+function BalanceRow({
+  label,
+  value,
+  className,
+  valueClassName,
 }: {
-  number: number
-  title: string
-  done?: boolean
-  muted?: boolean
-  children: React.ReactNode
+  label: string
+  value: string
+  className?: string
+  valueClassName?: string
 }) {
   return (
-    <li className={cn("rounded-[16px] bg-card p-4 ring-1 ring-border transition", !muted && !done && "ring-primary/40")}>
-      <div className="mb-3 flex items-center gap-2.5">
-        <span
-          className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-            done ? "bg-positive text-white" : muted ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground",
-          )}
-          aria-hidden
-        >
-          {done ? <CheckIcon className="size-3.5" /> : number}
-        </span>
-        <h2 className={cn("text-sm font-semibold", muted && "text-muted-foreground")}>
-          <span className="sr-only">Step {number}: </span>
-          {title}
-        </h2>
-      </div>
-      {children}
-    </li>
+    <div className={cn("flex items-baseline justify-between gap-4", className)}>
+      <dt>{label}</dt>
+      <dd className={cn("money", valueClassName)}>{value}</dd>
+    </div>
   )
 }
 
-function UpiStep({
+function UpiPay({
   vpa,
   name,
   amountPaise,

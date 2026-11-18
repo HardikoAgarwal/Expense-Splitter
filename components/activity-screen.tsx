@@ -10,6 +10,7 @@ import { Section } from "@/components/section"
 import { ShowList } from "@/components/show-list"
 import { Button } from "@/components/ui/button"
 import { markNoticesSeenAction, resolveSettlementAction } from "@/lib/actions"
+import { noticeTitle } from "@/lib/expense-changes"
 import { formatINR } from "@/lib/money"
 import type { ActivityItem, ShareNotice } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
@@ -118,10 +119,11 @@ export function ActivityScreen({
                   <Person id={notice.actorId} name={notice.actorName} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">
-                      {notice.actorName.split(" ")[0]} added you to {notice.description}
+                      {noticeTitle(notice.kind, notice.actorName.split(" ")[0], notice.description)}
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      Your share {formatINR(notice.sharePaise)} · {notice.groupName}
+                      {notice.kind === "added" ? `Your share ${formatINR(notice.sharePaise)}` : notice.summary} ·{" "}
+                      {notice.groupName}
                     </span>
                   </span>
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">New</span>

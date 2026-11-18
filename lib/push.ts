@@ -5,6 +5,14 @@ import { type PushSubscription, sendNotification, WebPushError } from "web-push"
 import { isDemoMode } from "@/lib/env"
 import { formatINR } from "@/lib/money"
 import { createServiceClient } from "@/lib/supabase/service"
+import {
+  deleteRecipients,
+  describeDelete,
+  describeEdit,
+  editRecipients,
+  type ExpenseSnapshot,
+  noticeTitle,
+} from "@/lib/expense-changes"
 import type { SaveExpenseInput, SessionUser } from "@/lib/types"
 
 export type PushPayload = { title: string; body: string; url: string; tag?: string }
@@ -20,6 +28,11 @@ function vapid() {
 /** Push needs VAPID keys, the service role key and a real database. Without them it quietly does nothing. */
 export function pushEnabled() {
   return !isDemoMode() && vapid() !== null && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim())
+}
+
+/** Server-side notices (Activity entries) need only the service role key and a real database. */
+export function serverNotificationsEnabled() {
+  return !isDemoMode() && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim())
 }
 
 /** The public key the browser subscribes with, or null when push is not configured. */
@@ -122,4 +135,105 @@ export async function notifySettlementResolved(actor: SessionUser, settlementId:
     url: `/groups/${data.group_id}/settle`,
     tag: `settlement-${settlementId}`,
   })
+}
+
+type ChangeNotice = { userId: string; sharePaise: number; summary: string }
+
+/** Writes edited/deleted Activity notices. Quietly skips if the migration has not been applied yet. */
+async function insertChangeNotices(
+  kind: "edited" | "deleted",
+  actorId: string,
+  snapshot: ExpenseSnapshot,
+  description: string,
+  notices: ChangeNotice[],
+) {
+  if (notices.length === 0) return
+  const { error } = await createServiceClient()
+    .from("share_notices")
+    .insert(
+      notices.map((notice) => ({
+        user_id: notice.userId,
+        expense_id: kind === "deleted" ? null : snapshot.id,
+        group_id: snapshot.groupId,
+        actor_id: actorId,
+        share_paise: notice.sharePaise,
+        kind,
+        summary: notice.summary,
+        description,
+      })),
+    )
+  if (error) console.warn("[notices] could not record", kind, error.message)
+}
+
+async function displayNames(ids: string[]) {
+  if (ids.length === 0) return new Map<string, string>()
+  const { data } = await createServiceClient().from("profiles").select("id, display_name").in("id", ids)
+  return new Map((data ?? []).map((row) => [row.id as string, row.display_name as string]))
+}
+
+const shareIn = (snapshot: ExpenseSnapshot, userId: string) =>
+  snapshot.shares.find((share) => share.userId === userId)?.sharePaise ?? 0
+
+/**
+ * The creator edited an expense. Everyone who had or has a share (except the editor) gets an
+ * Activity notice saying what changed for them, plus a push. People newly added to the split
+ * already get the database's "added you" notice, so they only get the new-expense push.
+ */
+export async function notifyExpenseEdited(actor: SessionUser, before: ExpenseSnapshot, after: ExpenseSnapshot) {
+  if (!serverNotificationsEnabled()) return
+  const { added, edited } = editRecipients(before, after, actor.id)
+  if (added.length === 0 && edited.length === 0) return
+  const names = await displayNames([after.payerId])
+  const nameOf = (id: string) => first(names.get(id) ?? "Someone")
+  const description = after.description.trim()
+  const notices = edited
+    .map((userId) => ({ userId, sharePaise: shareIn(after, userId), summary: describeEdit(before, after, userId, nameOf) }))
+    .filter((notice): notice is ChangeNotice => notice.summary !== null)
+  await insertChangeNotices("edited", actor.id, after, description, notices)
+  if (!pushEnabled()) return
+  const group = await groupName(after.groupId)
+  await Promise.all([
+    ...notices.map((notice) =>
+      sendPush([notice.userId], {
+        title: noticeTitle("edited", first(actor.displayName), description),
+        body: `${notice.summary} · ${group}`,
+        url: `/groups/${after.groupId}`,
+        tag: `expense-${after.id}`,
+      }),
+    ),
+    ...added.map((userId) =>
+      sendPush([userId], {
+        title: `New expense in ${group}`,
+        body: `${first(actor.displayName)} added you to ${description} (${formatINR(after.amountPaise)}). Your share: ${formatINR(shareIn(after, userId))}.`,
+        url: `/groups/${after.groupId}`,
+        tag: `expense-${after.id}`,
+      }),
+    ),
+  ])
+}
+
+/** The creator deleted an expense: tell everyone who had a share in it. */
+export async function notifyExpenseDeleted(actor: SessionUser, before: ExpenseSnapshot) {
+  if (!serverNotificationsEnabled()) return
+  const recipients = deleteRecipients(before, actor.id)
+  if (recipients.length === 0) return
+  const description = before.description.trim()
+  const notices = recipients.map((userId) => ({
+    userId,
+    sharePaise: shareIn(before, userId),
+    summary: describeDelete(before, userId),
+  }))
+  await insertChangeNotices("deleted", actor.id, before, description, notices)
+  if (!pushEnabled()) return
+  const group = await groupName(before.groupId)
+  await Promise.all(
+    notices.map((notice) =>
+      sendPush([notice.userId], {
+        title: noticeTitle("deleted", first(actor.displayName), description),
+        body: `${notice.summary} · ${group}`,
+        url: `/groups/${before.groupId}`,
+        tag: `expense-${before.id}`,
+      }),
+    ),
+  )
 }

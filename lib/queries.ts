@@ -178,6 +178,16 @@ export async function saveExpense(input: SaveExpenseInput) {
   return demo.saveExpense(user.id, input)
 }
 
+/** The stored expense before a change, for change notices. Demo mode records its own notices. */
+export async function expenseSnapshot(expenseId: string) {
+  if (isDemoMode()) return null
+  try {
+    return await remote.expenseSnapshot(expenseId)
+  } catch {
+    return null
+  }
+}
+
 export async function deleteExpense(expenseId: string) {
   if (!isDemoMode()) return remote.deleteExpense(expenseId)
   const user = await actor()

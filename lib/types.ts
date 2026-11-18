@@ -58,7 +58,11 @@ export type Expense = {
 
 export type ShareNotice = {
   id: string
-  expenseId: string
+  kind: "added" | "edited" | "deleted"
+  /** Edited/deleted notices: what changed, e.g. "₹1,200 → ₹1,500 · your share ₹600 → ₹750". */
+  summary: string | null
+  /** Null for deleted expenses. */
+  expenseId: string | null
   groupId: string
   groupName: string
   actorId: string

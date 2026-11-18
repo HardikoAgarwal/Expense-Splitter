@@ -4,7 +4,14 @@ import { revalidatePath } from "next/cache"
 import { after } from "next/server"
 
 import { errorMessage } from "@/lib/errors"
-import { notifyExpenseAdded, notifySettlementRequested, notifySettlementResolved, pushEnabled } from "@/lib/push"
+import {
+  notifyExpenseAdded,
+  notifyExpenseDeleted,
+  notifyExpenseEdited,
+  notifySettlementRequested,
+  notifySettlementResolved,
+  serverNotificationsEnabled,
+} from "@/lib/push"
 import * as queries from "@/lib/queries"
 import type { ActionResult, SaveExpenseInput } from "@/lib/types"
 
@@ -12,9 +19,9 @@ function refresh() {
   revalidatePath("/", "layout")
 }
 
-/** Runs a push after the response has been sent, so it never slows the action down. */
+/** Runs notices and pushes after the response has been sent, so they never slow the action down. */
 function notifyLater(task: () => Promise<void>) {
-  if (!pushEnabled()) return
+  if (!serverNotificationsEnabled()) return
   after(async () => {
     try {
       await task()
@@ -116,16 +123,37 @@ export async function joinGroupAction(code: string) {
 }
 
 export async function saveExpenseAction(input: SaveExpenseInput) {
+  // Read the stored version first so the people in the split can be told what changed.
+  const before = input.id ? await queries.expenseSnapshot(input.id) : null
   const result = await run(() => queries.saveExpense(input))
-  if (result.ok && !input.id) {
-    const user = await queries.getSessionUser()
-    if (user) notifyLater(() => notifyExpenseAdded(user, input, result.data))
+  if (!result.ok) return result
+  const user = await queries.getSessionUser()
+  if (!user) return result
+  if (!input.id) {
+    notifyLater(() => notifyExpenseAdded(user, input, result.data))
+  } else if (before) {
+    const after = {
+      ...before,
+      description: input.description.trim(),
+      amountPaise: input.amountPaise,
+      payerId: input.payerId,
+      expenseDate: input.expenseDate,
+      category: input.category ?? null,
+      shares: input.shares,
+    }
+    notifyLater(() => notifyExpenseEdited(user, before, after))
   }
   return result
 }
 
 export async function deleteExpenseAction(expenseId: string) {
-  return run(() => queries.deleteExpense(expenseId))
+  const before = await queries.expenseSnapshot(expenseId)
+  const result = await run(() => queries.deleteExpense(expenseId))
+  if (result.ok && before) {
+    const user = await queries.getSessionUser()
+    if (user) notifyLater(() => notifyExpenseDeleted(user, before))
+  }
+  return result
 }
 
 export async function flagExpenseAction(expenseId: string, reason: string) {

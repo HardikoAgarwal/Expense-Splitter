@@ -35,6 +35,15 @@ import { adminBlockReason, generateSecret, mutateUserBlockReason, signInBlockRea
 import { groupAdminBlockReason, promoteMemberBlockReason, removeMemberBlockReason } from "@/lib/group-access"
 import { hashPassword, verifyPassword } from "@/lib/demo/password"
 import { DEMO_INVITES, IDS, seedExpenses } from "@/lib/demo/seed-data"
+import { canModifyExpense, ONLY_CREATOR_MESSAGE } from "@/lib/expense-access"
+import {
+  deleteRecipients,
+  describeDelete,
+  describeEdit,
+  editRecipients,
+  type ExpenseSnapshot,
+  type NoticeKind,
+} from "@/lib/expense-changes"
 import { isValidUpi, normalizeUpi } from "@/lib/upi"
 
 type DemoUser = {
@@ -72,8 +81,11 @@ type DemoFlag = {
 
 type DemoNotice = {
   id: string
+  kind?: NoticeKind
+  summary?: string | null
+  description?: string
   userId: string
-  expenseId: string
+  expenseId: string | null
   groupId: string
   actorId: string
   sharePaise: number
@@ -758,11 +770,13 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
 
     const existing = db.expenses.find((expense) => expense.id === input.id)
     if (!existing || existing.groupId !== input.groupId) throw new AppError("Expense not found")
+    if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
     if (isExpenseLocked(existing.expenseDate, lockedThrough)) {
       throw new AppError("This expense is locked by an approved settlement")
     }
     const previous = new Set(existing.shares.filter((share) => share.sharePaise > 0).map((share) => share.userId))
     const previousPayer = existing.payerId
+    const before = demoSnapshot(existing)
     existing.description = description
     existing.amountPaise = input.amountPaise
     existing.payerId = input.payerId
@@ -779,9 +793,55 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
       }
     }
     recordShareNotices(db, userId, existing, previous)
+    recordChangeNotices(db, userId, "edited", before, demoSnapshot(existing))
     await persist(db)
     return existing.id
   })
+}
+
+function demoSnapshot(expense: DemoExpense): ExpenseSnapshot {
+  return {
+    id: expense.id,
+    groupId: expense.groupId,
+    description: expense.description,
+    amountPaise: expense.amountPaise,
+    payerId: expense.payerId,
+    expenseDate: expense.expenseDate,
+    category: expense.category ?? null,
+    createdBy: expense.createdBy,
+    shares: expense.shares.map((share) => ({ userId: share.userId, sharePaise: share.sharePaise })),
+  }
+}
+
+/** Mirrors lib/push.ts: edited/deleted notices for everyone else who had or has a share. */
+function recordChangeNotices(
+  db: DemoDb,
+  actorId: string,
+  kind: "edited" | "deleted",
+  before: ExpenseSnapshot,
+  after: ExpenseSnapshot | null,
+) {
+  const now = new Date().toISOString()
+  const nameOf = (id: string) => (db.users.find((user) => user.id === id)?.displayName ?? "Someone").split(" ")[0]
+  const snapshot = after ?? before
+  const recipients = after ? editRecipients(before, after, actorId).edited : deleteRecipients(before, actorId)
+  for (const recipient of recipients) {
+    const summary = after ? describeEdit(before, after, recipient, nameOf) : describeDelete(before, recipient)
+    if (!summary) continue
+    db.notices.push({
+      id: randomUUID(),
+      kind,
+      summary,
+      description: snapshot.description,
+      userId: recipient,
+      expenseId: after ? snapshot.id : null,
+      groupId: snapshot.groupId,
+      actorId,
+      sharePaise: snapshot.shares.find((share) => share.userId === recipient)?.sharePaise ?? 0,
+      createdAt: now,
+      seenAt: null,
+    })
+  }
 }
 
 function recordShareNotices(db: DemoDb, actorId: string, expense: DemoExpense, alreadyShared: Set<string>) {
@@ -806,6 +866,7 @@ export async function deleteExpense(userId: string, expenseId: string) {
     const existing = db.expenses.find((expense) => expense.id === expenseId)
     if (!existing) throw new AppError("Expense not found")
     assertMember(db, existing.groupId, userId)
+    if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
     const lockedThrough = lockDate(
       ledgerSettlements(db.settlements.filter((settlement) => settlement.groupId === existing.groupId)),
     )
@@ -815,6 +876,7 @@ export async function deleteExpense(userId: string, expenseId: string) {
     db.expenses = db.expenses.filter((expense) => expense.id !== expenseId)
     db.flags = db.flags.filter((flag) => flag.expenseId !== expenseId)
     db.notices = db.notices.filter((notice) => notice.expenseId !== expenseId)
+    recordChangeNotices(db, userId, "deleted", demoSnapshot(existing), null)
     await persist(db)
   })
 }
@@ -1038,12 +1100,14 @@ export function buildActivity(
       const expense = group.expenses.find((item) => item.id === notice.expenseId)
       notices.push({
         id: notice.id,
+        kind: notice.kind ?? "added",
+        summary: notice.summary ?? null,
         expenseId: notice.expenseId,
         groupId: group.id,
         groupName: group.name,
         actorId: notice.actorId,
         actorName: nameOf(notice.actorId),
-        description: expense?.description ?? "an expense",
+        description: expense?.description ?? notice.description ?? "an expense",
         sharePaise: notice.sharePaise,
         createdAt: notice.createdAt,
         seen: Boolean(notice.seenAt),

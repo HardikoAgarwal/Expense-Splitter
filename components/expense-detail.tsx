@@ -2,8 +2,13 @@
 
 import { useState } from "react"
 
+import { FlagIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react"
+
 import { AppSheet } from "@/components/app-sheet"
+import { CategoryIcon } from "@/components/category-icon"
+import { SectionTitle } from "@/components/field"
 import { Notice } from "@/components/notice"
+import { Person } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -14,9 +19,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { deleteExpenseAction, flagExpenseAction, resolveFlagAction } from "@/lib/actions"
+import { categoryLabel } from "@/lib/categories"
+import { canModifyExpense } from "@/lib/expense-access"
 import { formatDay, formatINR } from "@/lib/money"
 import type { ActionResult, Expense, GroupDetail, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
+import { cn } from "@/lib/utils"
 
 export function ExpenseDetail({
   expense,
@@ -41,8 +49,9 @@ export function ExpenseDetail({
   const canResolve = expense
     ? expense.flags.some((flag) => flag.userId === user.id || expense.createdBy === user.id)
     : false
-  const canDelete = Boolean(expense && !expense.locked)
-  const payer = group.members.find((member) => member.id === expense?.payerId)
+  const canModify = canModifyExpense(expense, user.id)
+  const fullName = (id: string) => group.members.find((member) => member.id === id)?.displayName ?? "Former member"
+  const nameOf = (id: string) => (id === user.id ? "You" : fullName(id))
   const participants = (expense?.shares ?? []).filter((share) => share.sharePaise > 0)
 
   function flag() {
@@ -72,7 +81,7 @@ export function ExpenseDetail({
   }
 
   function remove() {
-    if (!expense) return
+    if (!expense || !canModify) return
     run(() => deleteExpenseAction(expense.id), {
       success: "Expense deleted",
       onSuccess: () => {
@@ -88,36 +97,43 @@ export function ExpenseDetail({
         open={Boolean(expense)}
         onOpenChange={(open) => !open && onClose()}
         title={expense?.description ?? "Expense"}
-        description={
-          expense ? `${payer?.displayName.split(" ")[0] ?? "Someone"} paid · ${formatDay(expense.expenseDate)}` : undefined
-        }
+        description={expense ? `${categoryLabel(expense.category)} · ${formatDay(expense.expenseDate)}` : undefined}
         footer={
-          expense ? (
-            <div className="flex w-full flex-col gap-2">
-              <Button
-                className="h-12 w-full rounded-[12px]"
-                onClick={() => onEdit(expense)}
-                disabled={expense.locked}
-              >
-                {expense.locked ? "Locked" : "Edit"}
-              </Button>
-              {canDelete ? (
+          expense && canModify ? (
+            expense.locked ? (
+              <p className="flex w-full items-center justify-center gap-2 py-1 text-sm text-muted-foreground">
+                <LockIcon className="size-4" aria-hidden /> Locked by an approved settlement
+              </p>
+            ) : (
+              <div className="grid w-full grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-12 w-full rounded-[12px] text-negative hover:text-negative"
+                  className="h-12 rounded-[12px] text-negative hover:text-negative"
                   onClick={() => setConfirmDelete(true)}
                 >
-                  Delete
+                  <Trash2Icon /> Delete
                 </Button>
-              ) : null}
-            </div>
+                <Button className="h-12 rounded-[12px]" onClick={() => onEdit(expense)}>
+                  <PencilIcon /> Edit
+                </Button>
+              </div>
+            )
           ) : null
         }
       >
         {expense ? (
-          <div className="space-y-4 pb-2">
-            <p className="money text-center text-3xl">{formatINR(expense.amountPaise)}</p>
+          <div className="space-y-6 pb-3">
+            <div className="flex items-center gap-3 rounded-[16px] bg-gradient-to-br from-accent/70 to-card px-4 py-4 ring-1 ring-border">
+              <CategoryIcon category={expense.category} />
+              <div className="min-w-0 flex-1">
+                <p className="money text-[1.9rem] leading-tight">{formatINR(expense.amountPaise)}</p>
+                <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                  {expense.payerId === user.id ? "You paid" : `${nameOf(expense.payerId).split(" ")[0]} paid`}
+                </p>
+              </div>
+            </div>
+
             {expense.disputed ? (
               <Notice
                 tone="warning"
@@ -138,46 +154,88 @@ export function ExpenseDetail({
                 {expense.flags[0]?.reason || "Still counted in balances."}
               </Notice>
             ) : null}
-            <ul className="space-y-3">
-              {participants.map((share) => {
-                const member = group.members.find((item) => item.id === share.userId)
-                return (
-                  <li key={share.userId} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate">{share.userId === user.id ? "You" : member?.displayName}</span>
-                    <span className="font-medium">{formatINR(share.sharePaise)}</span>
+
+            <dl className="divide-y rounded-[16px] bg-card text-sm ring-1 ring-border">
+              <DetailRow label="Paid by">
+                <span className="flex min-w-0 items-center gap-2">
+                  <Person id={expense.payerId} name={fullName(expense.payerId)} size="sm" />
+                  <span className="truncate">{nameOf(expense.payerId)}</span>
+                </span>
+              </DetailRow>
+              <DetailRow label="Date">{formatDay(expense.expenseDate)}</DetailRow>
+              <DetailRow label="Category">{categoryLabel(expense.category)}</DetailRow>
+              <DetailRow label="Added by">{nameOf(expense.createdBy)}</DetailRow>
+            </dl>
+
+            <section aria-label="Split">
+              <SectionTitle as="h3" className="mb-3">
+                Split · {participants.length} {participants.length === 1 ? "person" : "people"}
+              </SectionTitle>
+              <ul className="space-y-1">
+                {participants.map((share) => (
+                  <li
+                    key={share.userId}
+                    className={cn(
+                      "flex items-center gap-3 rounded-[12px] px-2 py-2 text-sm",
+                      share.userId === user.id && "bg-accent/60",
+                    )}
+                  >
+                    <Person id={share.userId} name={fullName(share.userId)} size="sm" />
+                    <span className="min-w-0 flex-1 truncate">{nameOf(share.userId)}</span>
+                    <span className="money font-medium">{formatINR(share.sharePaise)}</span>
                   </li>
-                )
-              })}
-            </ul>
+                ))}
+              </ul>
+            </section>
+
             {canFlag ? (
               flagging ? (
                 <form
-                  className="space-y-2"
+                  className="space-y-3 rounded-[16px] bg-muted/50 p-3 ring-1 ring-border"
                   onSubmit={(event) => {
                     event.preventDefault()
                     flag()
                   }}
                 >
+                  <label htmlFor="flag-reason" className="block text-sm font-medium">
+                    What looks wrong?
+                  </label>
                   <textarea
+                    id="flag-reason"
                     value={reason}
                     onChange={(event) => setReason(event.target.value)}
                     maxLength={200}
-                    placeholder="Optional note"
-                    className="min-h-20 w-full rounded-[12px] border border-input bg-transparent px-3 py-2 text-base outline-none"
+                    placeholder="Optional note, e.g. I wasn't there"
+                    className="min-h-20 w-full rounded-[12px] border border-input bg-background px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   />
-                  <Button type="submit" variant="outline" className="h-11 w-full rounded-[12px]" pending={busy}>
-                    Flag expense
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="ghost" className="h-11 rounded-[12px]" onClick={() => setFlagging(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" variant="outline" className="h-11 rounded-[12px]" pending={busy}>
+                      <FlagIcon /> Flag it
+                    </Button>
+                  </div>
                 </form>
               ) : (
                 <button
                   type="button"
-                  className="w-full text-center text-sm font-medium text-muted-foreground"
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-border text-sm font-medium text-muted-foreground transition hover:border-warning/60 hover:bg-warning/5 hover:text-foreground"
                   onClick={() => setFlagging(true)}
                 >
-                  Flag
+                  <FlagIcon className="size-4" aria-hidden /> Something wrong? Flag it
                 </button>
               )
+            ) : myFlag ? (
+              <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <FlagIcon className="size-4" aria-hidden /> You flagged this expense
+              </p>
+            ) : null}
+
+            {!canModify ? (
+              <p className="text-center text-xs text-muted-foreground">
+                Only {nameOf(expense.createdBy).split(" ")[0]} can edit or delete this expense.
+              </p>
             ) : null}
           </div>
         ) : null}
@@ -202,5 +260,14 @@ export function ExpenseDetail({
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-4 py-3">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-medium">{children}</dd>
+    </div>
   )
 }

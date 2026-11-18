@@ -5,6 +5,8 @@ import { cache } from "react"
 import { signInBlockReason } from "@/lib/admin"
 import { isCategory } from "@/lib/categories"
 import { AppError } from "@/lib/errors"
+import { canModifyExpense, ONLY_CREATOR_MESSAGE } from "@/lib/expense-access"
+import type { ExpenseSnapshot } from "@/lib/expense-changes"
 import { isExpenseLocked, lockDate, type LedgerSettlement } from "@/lib/ledger"
 import { createClient } from "@/lib/supabase/server"
 import { isValidUpi, normalizeUpi } from "@/lib/upi"
@@ -20,6 +22,7 @@ import type {
   SaveExpenseInput,
   SessionUser,
   Settlement,
+  ShareNotice,
   SettlementStatus,
   SummaryExpenseRow,
 } from "@/lib/types"
@@ -467,8 +470,42 @@ export async function joinByCode(code: string) {
   }
 }
 
+/** The expense as stored now, with its shares. Cached per request so a check and a diff share one query. */
+export const expenseSnapshot = cache(async (expenseId: string): Promise<ExpenseSnapshot | null> => {
+  const supabase = await client()
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("id, group_id, description, amount_paise, payer_id, expense_date, category, created_by, expense_shares(user_id, share_paise)")
+    .eq("id", expenseId)
+    .maybeSingle()
+  fail(error)
+  if (!data) return null
+  return {
+    id: data.id as string,
+    groupId: data.group_id as string,
+    description: data.description as string,
+    amountPaise: num(data.amount_paise as number | string),
+    payerId: data.payer_id as string,
+    expenseDate: data.expense_date as string,
+    category: (data.category as string | null) ?? null,
+    createdBy: data.created_by as string,
+    shares: ((data.expense_shares ?? []) as { user_id: string; share_paise: number | string }[]).map((row) => ({
+      userId: row.user_id,
+      sharePaise: num(row.share_paise),
+    })),
+  }
+})
+
+/** Throws unless the signed-in user added this expense. The database trigger enforces it too. */
+async function assertExpenseCreator(expenseId: string) {
+  const [user, snapshot] = await Promise.all([requireUser(), expenseSnapshot(expenseId)])
+  if (!snapshot) throw new AppError("Expense not found")
+  if (!canModifyExpense(snapshot, user.id)) throw new AppError(ONLY_CREATOR_MESSAGE)
+}
+
 export async function saveExpense(input: SaveExpenseInput) {
   if (input.category && !isCategory(input.category)) throw new AppError("Unknown category")
+  if (input.id) await assertExpenseCreator(input.id)
   const supabase = await client()
   const { data, error } = await supabase.rpc("save_expense", {
     p_id: input.id ?? null,
@@ -488,6 +525,7 @@ export async function saveExpense(input: SaveExpenseInput) {
 }
 
 export async function deleteExpense(expenseId: string) {
+  await assertExpenseCreator(expenseId)
   const supabase = await client()
   const { error } = await supabase.rpc("delete_expense", { p_id: expenseId })
   fail(error)
@@ -614,6 +652,22 @@ export async function countUnseenNotices(): Promise<number> {
   return count ?? 0
 }
 
+/** The caller's notices. Falls back to the original columns until the change-notice migration is applied. */
+async function listNotices(
+  userId: string,
+): Promise<{ data: Record<string, unknown>[] | null; error: { message: string } | null }> {
+  const supabase = await client()
+  const result = await supabase
+    .from("share_notices")
+    .select("id, kind, summary, description, expense_id, group_id, actor_id, share_paise, created_at, seen_at, expenses(description), groups(name)")
+    .eq("user_id", userId)
+  if (!result.error || !/kind|summary|description/.test(result.error.message)) return result
+  return await supabase
+    .from("share_notices")
+    .select("id, expense_id, group_id, actor_id, share_paise, created_at, seen_at, expenses(description), groups(name)")
+    .eq("user_id", userId)
+}
+
 export async function getActivity() {
   const user = await requireUser()
   const supabase = await client()
@@ -626,10 +680,7 @@ export async function getActivity() {
     supabase.from("expenses").select("id, group_id, description, amount_paise, payer_id, created_at, groups(name)"),
     supabase.from("settlements").select("*, groups(name)"),
     supabase.from("profiles").select("id, display_name"),
-    supabase
-      .from("share_notices")
-      .select("id, expense_id, group_id, actor_id, share_paise, created_at, seen_at, expenses(description), groups(name)")
-      .eq("user_id", user.id),
+    listNotices(user.id),
   ])
   fail(error)
   fail(settlementError)
@@ -688,15 +739,18 @@ export async function getActivity() {
     .map((row) => {
       const group = asOne(row.groups as GroupEmbed | GroupEmbed[] | null)
       const expense = asOne(row.expenses as { description?: string } | { description?: string }[] | null)
+      const kind = (row.kind as ShareNotice["kind"] | undefined) ?? "added"
       return {
         id: row.id as string,
-        expenseId: row.expense_id as string,
+        kind,
+        summary: (row.summary as string | null | undefined) ?? null,
+        expenseId: (row.expense_id as string | null) ?? null,
         groupId: row.group_id as string,
         groupName: group?.name ?? "Group",
         actorId: row.actor_id as string,
         actorName: nameOf(row.actor_id as string),
-        description: expense?.description ?? "an expense",
-        sharePaise: num(row.share_paise),
+        description: expense?.description ?? (row.description as string | null | undefined) ?? "an expense",
+        sharePaise: num(row.share_paise as number | string),
         createdAt: row.created_at as string,
         seen: Boolean(row.seen_at),
       }

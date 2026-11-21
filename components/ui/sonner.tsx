@@ -10,7 +10,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      className="toaster group"
+      className="toaster group pointer-events-none"
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />
@@ -34,11 +34,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "var(--radius)",
+          pointerEvents: "none",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          // Empty toaster is full-width on mobile and was stealing the first tap on nav links.
+          toast: "cn-toast pointer-events-auto",
         },
       }}
       {...props}

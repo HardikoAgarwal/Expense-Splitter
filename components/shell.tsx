@@ -103,6 +103,8 @@ export function Shell({
     pathname.includes("/settle") ||
     pathname.includes("/summary")
   const activeGroupId = pathname.match(/^\/groups\/([^/]+)/)?.[1] ?? null
+  // Group detail pages keep their own sticky blurred header — a second app bar fought taps on iOS.
+  const showBrand = !pathname.match(/^\/groups\/[^/]+/)
 
   return (
     <ExpenseContext.Provider value={{ openExpense, registerGroup }}>
@@ -185,18 +187,24 @@ export function Shell({
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <main
             id="main"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-10"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+0.75rem)] md:pb-10"
           >
             <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
-              <header className="sticky top-0 z-30 -mx-0 flex items-center justify-between gap-3 bg-background/55 px-4 pt-[max(0.65rem,env(safe-area-inset-top))] pb-2 backdrop-blur-xl md:hidden">
-                <Link href="/groups" className="flex min-w-0 items-center gap-2.5">
-                  <Mark className="size-8 shrink-0" />
-                  <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
-                </Link>
-                <Link href="/account" aria-label="Account" className="rounded-full">
-                  <Person id={user.id} name={user.displayName} />
-                </Link>
-              </header>
+              {showBrand ? (
+                <div className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1 md:hidden">
+                  <Link href="/groups" className="flex min-w-0 touch-manipulation items-center gap-2.5">
+                    <Mark className="size-8 shrink-0" />
+                    <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
+                  </Link>
+                  <Link
+                    href="/account"
+                    aria-label="Account"
+                    className="touch-manipulation rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <Person id={user.id} name={user.displayName} />
+                  </Link>
+                </div>
+              ) : null}
               {pathname === "/groups" ? <InstallBanner /> : null}
               {children}
             </div>
@@ -204,7 +212,7 @@ export function Shell({
 
           <nav
             aria-label="Main"
-            className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+            className="relative z-20 grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
           >
             <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups") && !pathname.endsWith("/summary")}>
               <UsersIcon />
@@ -327,13 +335,14 @@ function NavItem({
   return (
     <Link
       href={href}
+      prefetch
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium",
-        active ? "text-primary" : "text-muted-foreground",
+        "relative z-10 flex h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+        active ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      <span className="relative [&_svg]:size-[22px]">
+      <span className="pointer-events-none relative [&_svg]:size-[22px]">
         {children}
         {badge ? (
           <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-negative px-1 text-[10px] font-semibold text-white">
@@ -342,7 +351,7 @@ function NavItem({
           </span>
         ) : null}
       </span>
-      {label}
+      <span className="pointer-events-none">{label}</span>
     </Link>
   )
 }

@@ -12,7 +12,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeColorSync />
       <VisualViewportSync />
       {children}
-      <Toaster position="top-center" offset={72} duration={2400} />
+      <Toaster position="bottom-center" offset={96} duration={2400} />
     </ThemeProvider>
   )
 }

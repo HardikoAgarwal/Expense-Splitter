@@ -1,9 +1,14 @@
-import Link from "next/link"
+"use client"
+
+import { useRouter } from "next/navigation"
 import { ChevronLeftIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-/** Shared back control. `chip` is the page control; `bar` sits inside the mobile top nav. */
+/**
+ * In-app back control. Always `replace`s to the parent route so the stack
+ * stays app-like (no extra history entries, no tab-cycling on system Back).
+ */
 export function BackLink({
   href,
   label,
@@ -15,10 +20,18 @@ export function BackLink({
   className?: string
   variant?: "chip" | "bar"
 }) {
+  const router = useRouter()
+
+  function go(event: React.MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault()
+    router.replace(href)
+  }
+
   if (variant === "bar") {
     return (
-      <Link
+      <a
         href={href}
+        onClick={go}
         className={cn(
           "touch-manipulation inline-flex h-9 max-w-[min(100%,11rem)] items-center gap-0.5 rounded-[10px] py-1 pr-2 pl-0.5 text-sm font-medium text-muted-foreground transition active:bg-muted/70 active:text-foreground",
           className,
@@ -26,13 +39,14 @@ export function BackLink({
       >
         <ChevronLeftIcon className="size-5 shrink-0" aria-hidden />
         <span className="truncate text-foreground">{label}</span>
-      </Link>
+      </a>
     )
   }
 
   return (
-    <Link
+    <a
       href={href}
+      onClick={go}
       className={cn(
         "-ml-1 mb-4 inline-flex h-11 max-w-full touch-manipulation items-center gap-1 rounded-full bg-card/80 pr-4 pl-2 text-sm font-medium text-foreground shadow-xs ring-1 ring-border backdrop-blur transition hover:bg-muted active:scale-[0.98]",
         className,
@@ -40,6 +54,6 @@ export function BackLink({
     >
       <ChevronLeftIcon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
       <span className="truncate">{label}</span>
-    </Link>
+    </a>
   )
 }

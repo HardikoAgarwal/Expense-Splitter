@@ -13,7 +13,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { BarChart3Icon, BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -25,6 +25,7 @@ import { Mark } from "@/components/mark"
 import { Person } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import { loadGroupAction } from "@/lib/actions"
+import { isAppTabHref } from "@/lib/app-nav"
 import { formatINR } from "@/lib/money"
 import type { Expense, GroupCard, GroupDetail, SessionUser } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -87,8 +88,17 @@ export function Shell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const usersTab = pathname.startsWith("/account") && searchParams.get("tab") === "users"
+
+  function goHome() {
+    if (pathname === "/groups") {
+      document.getElementById("main")?.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+    router.replace("/groups")
+  }
   const [picker, setPicker] = useState(false)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -184,10 +194,10 @@ export function Shell({
           aria-label="Main"
           className="hidden w-60 shrink-0 flex-col border-r bg-card/70 px-3 py-5 backdrop-blur-xl md:flex lg:w-72 lg:px-4"
         >
-          <Link href="/groups" className="flex items-center gap-2.5 px-2">
+          <button type="button" onClick={goHome} className="flex items-center gap-2.5 px-2 text-left">
             <Mark className="size-8" />
             <span className="text-lg font-semibold tracking-tight">Hissa</span>
-          </Link>
+          </button>
 
           <Button size="lg" className="mt-6 w-full" onClick={() => void openExpense()}>
             <PlusIcon />
@@ -270,10 +280,14 @@ export function Shell({
               >
                 <div className="flex items-center justify-between gap-2 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5">
                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <Link href="/groups" className="flex shrink-0 touch-manipulation items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={goHome}
+                      className="flex shrink-0 touch-manipulation items-center gap-2.5 text-left"
+                    >
                       <Mark className="size-8 shrink-0" />
                       <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
-                    </Link>
+                    </button>
                     {topBack ? (
                       <>
                         <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden />
@@ -375,6 +389,29 @@ function tone(net: number) {
   return "text-muted-foreground"
 }
 
+function useTabNavigate() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  return useCallback(
+    (href: string) => {
+      const [path, query = ""] = href.split("?")
+      const currentQuery = searchParams.toString()
+      const samePath = pathname === path
+      const sameQuery = query === currentQuery || (!query && !currentQuery && samePath)
+      if (samePath && sameQuery) {
+        document.getElementById("main")?.scrollTo({ top: 0, behavior: "smooth" })
+        return
+      }
+      // Tab roots replace history so system Back doesn’t cycle through tabs.
+      if (isAppTabHref(href) || isAppTabHref(path ?? href)) router.replace(href)
+      else router.push(href)
+    },
+    [pathname, router, searchParams],
+  )
+}
+
 function SideNavItem({
   href,
   label,
@@ -388,12 +425,14 @@ function SideNavItem({
   badge?: number
   children: React.ReactNode
 }) {
+  const go = useTabNavigate()
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
+      onClick={() => go(href)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm font-medium transition",
+        "relative flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-sm font-medium transition",
         active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
@@ -405,7 +444,7 @@ function SideNavItem({
           <span className="sr-only"> new</span>
         </span>
       ) : null}
-    </Link>
+    </button>
   )
 }
 
@@ -422,10 +461,11 @@ function NavItem({
   badge?: number
   children: React.ReactNode
 }) {
+  const go = useTabNavigate()
   return (
-    <Link
-      href={href}
-      prefetch
+    <button
+      type="button"
+      onClick={() => go(href)}
       aria-current={active ? "page" : undefined}
       className={cn(
         "relative z-10 flex h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
@@ -442,6 +482,6 @@ function NavItem({
         ) : null}
       </span>
       <span className="pointer-events-none">{label}</span>
-    </Link>
+    </button>
   )
 }

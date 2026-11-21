@@ -71,13 +71,8 @@ export function StickySubhead({ children }: { children: ReactNode }) {
     return () => setHasSubhead(false)
   }, [setHasSubhead])
 
-  if (!chrome) return null
-  return (
-    <>
-      <div className="md:hidden" style={{ height: chrome.subheadHeight }} aria-hidden />
-      {chrome.target ? createPortal(children, chrome.target) : null}
-    </>
-  )
+  if (!chrome?.target) return null
+  return createPortal(children, chrome.target)
 }
 
 export function Shell({
@@ -265,14 +260,7 @@ export function Shell({
             id="main"
             className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+0.75rem)] md:pb-10"
           >
-            <div
-              className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10"
-              style={
-                topBack
-                  ? ({ ["--app-bar-height" as string]: "calc(var(--app-bar-brand) + var(--app-bar-back))" } as React.CSSProperties)
-                  : undefined
-              }
-            >
+            <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
               <div
                 className={cn(
                   "md:hidden",
@@ -280,11 +268,19 @@ export function Shell({
                     "sticky top-0 z-30 bg-background/80 backdrop-blur-xl supports-backdrop-filter:bg-background/65",
                 )}
               >
-                <div className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5">
-                  <Link href="/groups" className="flex min-w-0 touch-manipulation items-center gap-2.5">
-                    <Mark className="size-8 shrink-0" />
-                    <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
-                  </Link>
+                <div className="flex items-center justify-between gap-2 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <Link href="/groups" className="flex shrink-0 touch-manipulation items-center gap-2.5">
+                      <Mark className="size-8 shrink-0" />
+                      <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
+                    </Link>
+                    {topBack ? (
+                      <>
+                        <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden />
+                        <BackLink href={topBack.href} label={topBack.label} variant="bar" className="min-w-0" />
+                      </>
+                    ) : null}
+                  </div>
                   <Link
                     href="/account"
                     aria-label="Account"
@@ -293,14 +289,9 @@ export function Shell({
                     <Person id={user.id} name={user.displayName} />
                   </Link>
                 </div>
-                {topBack ? (
-                  <div className="px-3 pb-1">
-                    <BackLink href={topBack.href} label={topBack.label} variant="bar" />
-                  </div>
-                ) : null}
                 <div
                   ref={subheadRef}
-                  className={cn(hasSubhead ? "px-4 pb-3" : "pointer-events-none h-0 overflow-hidden")}
+                  className={cn(hasSubhead ? "px-4 pb-2.5" : "pointer-events-none h-0 overflow-hidden")}
                 />
               </div>
               {pathname === "/groups" ? <InstallBanner /> : null}

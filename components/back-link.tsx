@@ -20,7 +20,7 @@ export function BackLink({
       <Link
         href={href}
         className={cn(
-          "touch-manipulation -ml-1 inline-flex h-9 max-w-[min(100%,16rem)] items-center gap-0.5 rounded-[10px] py-1 pr-2.5 pl-0.5 text-sm font-medium text-muted-foreground transition active:bg-muted/70 active:text-foreground",
+          "touch-manipulation inline-flex h-9 max-w-[min(100%,11rem)] items-center gap-0.5 rounded-[10px] py-1 pr-2 pl-0.5 text-sm font-medium text-muted-foreground transition active:bg-muted/70 active:text-foreground",
           className,
         )}
       >

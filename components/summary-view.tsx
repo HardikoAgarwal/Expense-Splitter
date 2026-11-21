@@ -154,12 +154,6 @@ export function SummaryView({
           ) : null}
         </div>
 
-        {summary.totalPaise > 0 ? (
-          <div className="relative mt-5 h-1.5 overflow-hidden rounded-full bg-white/15" aria-hidden>
-            <div className="h-full rounded-full bg-white/85" style={{ width: `${Math.max(4, sharePct)}%` }} />
-          </div>
-        ) : null}
-
         <div className="relative mt-6 grid grid-cols-2 gap-3">
           <div className="min-w-0 rounded-[14px] bg-white/10 px-3.5 py-3">
             <p className="text-[11px] font-medium tracking-wide text-white/70 uppercase">Your share</p>
@@ -337,8 +331,8 @@ export function SummaryView({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="relative pt-3.5">
-      <h2 className="absolute top-0 left-3 z-0 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-[16px] bg-muted/80 px-3 pt-1.5 pb-4 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+    <div className="relative pt-5">
+      <h2 className="absolute top-0 left-3 z-0 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-[16px] bg-muted/80 px-3 pt-2 pb-5 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
         {title}
       </h2>
       <section className="relative z-10 rounded-[16px] bg-card p-4 ring-1 ring-border md:p-5">{children}</section>

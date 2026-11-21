@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   title: { default: "Hissa", template: "%s · Hissa" },
   description: "Split rent, groceries, and the rest of a shared home.",
   applicationName: "Hissa",
-  appleWebApp: { capable: true, title: "Hissa", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Hissa", statusBarStyle: "black-translucent" },
   icons: {
     icon: [
       { url: "/icons/icon-32.png", sizes: "32x32", type: "image/png" },

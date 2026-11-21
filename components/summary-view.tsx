@@ -49,8 +49,11 @@ export function SummaryView({
   }
 
   const peak = Math.max(...points.map((point) => point.totalPaise), 1)
-  const topCategory = Math.max(...summary.categories.map((item) => item.totalPaise), 1)
+  const topCategories = summary.categories.slice(0, 5)
+  const topCategory = Math.max(...topCategories.map((item) => item.totalPaise), 1)
   const topPayer = Math.max(...summary.payers.map((item) => item.paidPaise), 1)
+  const sharePct = summary.totalPaise > 0 ? Math.round((summary.mySharePaise / summary.totalPaise) * 100) : 0
+  const net = summary.myPaidPaise - summary.mySharePaise
 
   return (
     <div className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-6 md:px-0 md:pt-6">
@@ -100,22 +103,50 @@ export function SummaryView({
         </div>
       </header>
 
-      <section className="gradient-hero mt-5 grid gap-4 rounded-[16px] px-5 py-5 text-white sm:grid-cols-[1.4fr_1fr_1fr] md:px-6">
-        <div>
-          <p className="text-sm text-white/75">Spent in {formatMonth(month)}</p>
-          <p className="money mt-1 text-[2.6rem] leading-none">{formatINR(summary.totalPaise)}</p>
-          <p className="mt-2 text-sm text-white/75">
-            {summary.count} {summary.count === 1 ? "expense" : "expenses"}
-          </p>
-        </div>
-        <div className="flex gap-6 sm:contents">
-          <div className="sm:self-end">
-            <p className="text-sm text-white/75">Your share</p>
-            <p className="money mt-1 text-2xl">{formatINR(summary.mySharePaise)}</p>
+      <section className="gradient-hero mt-5 rounded-[20px] px-5 py-5 text-white md:px-6 md:py-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-white/75">Spent in {formatMonth(month)}</p>
+            <p className="money mt-1 text-[2.75rem] leading-none tracking-tight">{formatINR(summary.totalPaise)}</p>
           </div>
-          <div className="sm:self-end">
-            <p className="text-sm text-white/75">You paid</p>
-            <p className="money mt-1 text-2xl">{formatINR(summary.myPaidPaise)}</p>
+          <span className="shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold tracking-wide text-white/90">
+            {summary.count} {summary.count === 1 ? "expense" : "expenses"}
+          </span>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-[16px] bg-white/12 px-4 py-3 ring-1 ring-white/10">
+            <p className="text-xs font-medium tracking-wide text-white/70 uppercase">Your share</p>
+            <p className="money mt-1.5 text-[1.65rem] leading-none">{formatINR(summary.mySharePaise)}</p>
+            <p className="mt-2 text-xs text-white/65">
+              {summary.totalPaise > 0 ? `${sharePct}% of total spend` : "Nothing to split"}
+            </p>
+            {summary.totalPaise > 0 ? (
+              <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full rounded-full bg-white/80" style={{ width: `${Math.max(4, sharePct)}%` }} />
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-[16px] bg-white/12 px-4 py-3 ring-1 ring-white/10">
+            <p className="text-xs font-medium tracking-wide text-white/70 uppercase">You paid</p>
+            <p className="money mt-1.5 text-[1.65rem] leading-none">{formatINR(summary.myPaidPaise)}</p>
+            <p className="mt-2 text-xs text-white/65">
+              {net === 0
+                ? "Even with your share"
+                : net > 0
+                  ? `${formatINR(net)} more than share`
+                  : `${formatINR(Math.abs(net))} less than share`}
+            </p>
+            {summary.totalPaise > 0 ? (
+              <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/15">
+                <div
+                  className="h-full rounded-full bg-white/80"
+                  style={{
+                    width: `${Math.max(4, Math.round((summary.myPaidPaise / summary.totalPaise) * 100))}%`,
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -131,39 +162,48 @@ export function SummaryView({
       ) : (
         <div className="mt-5 grid gap-5 lg:grid-cols-2">
           <Card title="Spend by category">
-            <div className="flex h-3 overflow-hidden rounded-full bg-muted" aria-hidden>
-              {summary.categories.map((item) => (
-                <span
-                  key={item.category}
-                  style={{ width: `${(item.totalPaise / summary.totalPaise) * 100}%`, background: categoryColor(item.category) }}
-                />
-              ))}
-            </div>
-            <ul className="mt-4 space-y-3">
-              {summary.categories.map((item) => {
+            <ul className="space-y-3">
+              {topCategories.map((item) => {
                 const percent = Math.round((item.totalPaise / summary.totalPaise) * 100)
                 return (
                   <li key={item.category} className="flex items-center gap-3">
                     <CategoryIcon category={item.category} className="size-9 rounded-[10px] [&_svg]:size-4" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="truncate font-medium">{categoryLabel(item.category === "other" ? null : item.category)}</span>
+                        <span className="truncate font-medium">
+                          {categoryLabel(item.category === "other" ? null : item.category)}
+                        </span>
                         <span className="money shrink-0">{formatINR(item.totalPaise)}</span>
                       </div>
                       <div className="mt-1.5 flex items-center gap-2">
                         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                           <div
                             className="h-full rounded-full"
-                            style={{ width: `${Math.max(4, (item.totalPaise / topCategory) * 100)}%`, background: categoryColor(item.category) }}
+                            style={{
+                              width: `${Math.max(4, (item.totalPaise / topCategory) * 100)}%`,
+                              background: categoryColor(item.category),
+                            }}
                           />
                         </div>
                         <span className="w-9 text-right text-xs text-muted-foreground">{percent}%</span>
                       </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Your share {formatINR(item.mySharePaise)}
+                        {item.count > 0
+                          ? ` · ${item.count} ${item.count === 1 ? "expense" : "expenses"}`
+                          : ""}
+                      </p>
                     </div>
                   </li>
                 )
               })}
             </ul>
+            {summary.categories.length > topCategories.length ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                +{summary.categories.length - topCategories.length} more{" "}
+                {summary.categories.length - topCategories.length === 1 ? "category" : "categories"}
+              </p>
+            ) : null}
           </Card>
 
           <Card title="Top payers">
@@ -188,7 +228,7 @@ export function SummaryView({
             </ul>
           </Card>
 
-          {groups && summary.groups.length > 0 ? (
+          {groups && summary.groups.length > 1 ? (
             <Card title="By group">
               <ul className="divide-y">
                 {summary.groups.map((slice) => (
@@ -198,7 +238,9 @@ export function SummaryView({
                       className="flex items-center justify-between gap-3 py-2.5 hover:text-primary"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate font-medium">{groups.find((group) => group.id === slice.groupId)?.name ?? "Group"}</span>
+                        <span className="block truncate font-medium">
+                          {groups.find((group) => group.id === slice.groupId)?.name ?? "Group"}
+                        </span>
                         <span className="text-xs text-muted-foreground">Your share {formatINR(slice.mySharePaise)}</span>
                       </span>
                       <span className="flex items-center gap-1">

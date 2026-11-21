@@ -1,8 +1,8 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react"
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { BarChart3Icon, BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -52,6 +52,7 @@ export function Shell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const usersTab = pathname.startsWith("/account") && searchParams.get("tab") === "users"
   const [picker, setPicker] = useState(false)
@@ -59,7 +60,23 @@ export function Shell({
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<GroupDetail | null>(null)
   const [expense, setExpense] = useState<Expense | null>(null)
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
   const onScreen = useRef<GroupDetail | null>(null)
+
+  useEffect(() => {
+    setPendingHref(null)
+  }, [pathname])
+
+  const activePath = pendingHref ?? pathname
+
+  function go(href: string) {
+    if (href === pathname) return
+    setPendingHref(href)
+    startTransition(() => {
+      router.push(href)
+    })
+  }
 
   const registerGroup = useCallback((group: GroupDetail | null) => {
     onScreen.current = group
@@ -183,28 +200,25 @@ export function Shell({
         </aside>
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-background/90 px-4 pt-[max(0.65rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl md:hidden">
-            <Link href="/groups" className="flex min-w-0 items-center gap-2.5">
-              <Mark className="size-8 shrink-0" />
-              <span className="min-w-0">
-                <span className="block text-[15px] font-semibold tracking-tight">Hissa</span>
-                <span className="block truncate text-[11px] text-muted-foreground">{mobileTitle(pathname)}</span>
-              </span>
-            </Link>
-            <Link
-              href="/account"
-              aria-label="Account"
-              className="rounded-full ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              <Person id={user.id} name={user.displayName} />
-            </Link>
-          </header>
-
           <main
             id="main"
             className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-10"
           >
             <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
+              <div className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1 md:hidden">
+                <Link href="/groups" className="flex min-w-0 items-center gap-2.5" onClick={() => setPendingHref("/groups")}>
+                  <Mark className="size-8 shrink-0" />
+                  <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
+                </Link>
+                <button
+                  type="button"
+                  aria-label="Account"
+                  className="rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => go("/account")}
+                >
+                  <Person id={user.id} name={user.displayName} />
+                </button>
+              </div>
               {pathname === "/groups" ? <InstallBanner /> : null}
               {children}
             </div>
@@ -212,18 +226,33 @@ export function Shell({
 
           <nav
             aria-label="Main"
-            className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 border-t border-border/80 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
+            className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] grid-cols-4 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
           >
-            <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups") && !pathname.endsWith("/summary")}>
+            <NavItem
+              href="/groups"
+              label="Groups"
+              active={activePath.startsWith("/groups") && !activePath.endsWith("/summary")}
+              onNavigate={go}
+            >
               <UsersIcon />
             </NavItem>
-            <NavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
+            <NavItem href="/activity" label="Activity" active={activePath.startsWith("/activity")} badge={pending} onNavigate={go}>
               <BellIcon />
             </NavItem>
-            <NavItem href="/summary" label="Summary" active={pathname.startsWith("/summary") || pathname.endsWith("/summary")}>
+            <NavItem
+              href="/summary"
+              label="Summary"
+              active={activePath.startsWith("/summary") || activePath.endsWith("/summary")}
+              onNavigate={go}
+            >
               <BarChart3Icon />
             </NavItem>
-            <NavItem href="/account" label="Account" active={pathname.startsWith("/account") || pathname.startsWith("/admin")}>
+            <NavItem
+              href="/account"
+              label="Account"
+              active={activePath.startsWith("/account") || activePath.startsWith("/admin")}
+              onNavigate={go}
+            >
               <UserRoundIcon />
             </NavItem>
           </nav>
@@ -232,7 +261,7 @@ export function Shell({
             <button
               type="button"
               onClick={() => void openExpense()}
-              className="absolute right-4 bottom-[calc(var(--bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] z-30 flex size-[var(--fab-size)] items-center justify-center rounded-[18px] gradient-primary shadow-[0_12px_30px_-8px_rgba(31,107,74,0.8)] transition active:scale-95 md:hidden"
+              className="fixed right-4 bottom-[calc(var(--bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] z-40 flex size-[var(--fab-size)] items-center justify-center rounded-[18px] gradient-primary shadow-[0_12px_30px_-8px_rgba(31,107,74,0.8)] transition active:scale-95 md:hidden"
             >
               <PlusIcon className="size-7" />
               <span className="sr-only">Add expense</span>
@@ -285,15 +314,6 @@ function tone(net: number) {
   return "text-muted-foreground"
 }
 
-function mobileTitle(pathname: string) {
-  if (pathname.startsWith("/activity")) return "Activity"
-  if (pathname.startsWith("/summary") || pathname.endsWith("/summary")) return "Summary"
-  if (pathname.startsWith("/account") || pathname.startsWith("/admin")) return "Account"
-  if (pathname.includes("/settle")) return "Settle up"
-  if (pathname.match(/^\/groups\/[^/]+/)) return "Group"
-  return "Groups"
-}
-
 function SideNavItem({
   href,
   label,
@@ -334,19 +354,22 @@ function NavItem({
   active,
   badge,
   children,
+  onNavigate,
 }: {
   href: string
   label: string
   active: boolean
   badge?: number
   children: React.ReactNode
+  onNavigate: (href: string) => void
 }) {
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
       aria-current={active ? "page" : undefined}
+      onClick={() => onNavigate(href)}
       className={cn(
-        "relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+        "relative flex h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
         active ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -360,6 +383,6 @@ function NavItem({
         ) : null}
       </span>
       {label}
-    </Link>
+    </button>
   )
 }

@@ -2,7 +2,7 @@
  * Caching is deliberately conservative: only immutable build assets, icons and the
  * offline page are cached. Pages, server actions and Supabase calls always go to the
  * network so balances are never stale. */
-const VERSION = "hissa-v2"
+const VERSION = "hissa-v3"
 const STATIC_CACHE = `${VERSION}-static`
 const OFFLINE_URL = "/offline.html"
 const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png"]

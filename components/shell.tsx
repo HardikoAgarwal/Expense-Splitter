@@ -183,6 +183,23 @@ export function Shell({
         </aside>
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b border-border/80 bg-background/90 px-4 pt-[max(0.65rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl md:hidden">
+            <Link href="/groups" className="flex min-w-0 items-center gap-2.5">
+              <Mark className="size-8 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold tracking-tight">Hissa</span>
+                <span className="block truncate text-[11px] text-muted-foreground">{mobileTitle(pathname)}</span>
+              </span>
+            </Link>
+            <Link
+              href="/account"
+              aria-label="Account"
+              className="rounded-full ring-offset-background transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <Person id={user.id} name={user.displayName} />
+            </Link>
+          </header>
+
           <main
             id="main"
             className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-10"
@@ -195,7 +212,7 @@ export function Shell({
 
           <nav
             aria-label="Main"
-            className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+            className="grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 border-t border-border/80 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
           >
             <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups") && !pathname.endsWith("/summary")}>
               <UsersIcon />
@@ -268,6 +285,15 @@ function tone(net: number) {
   return "text-muted-foreground"
 }
 
+function mobileTitle(pathname: string) {
+  if (pathname.startsWith("/activity")) return "Activity"
+  if (pathname.startsWith("/summary") || pathname.endsWith("/summary")) return "Summary"
+  if (pathname.startsWith("/account") || pathname.startsWith("/admin")) return "Account"
+  if (pathname.includes("/settle")) return "Settle up"
+  if (pathname.match(/^\/groups\/[^/]+/)) return "Group"
+  return "Groups"
+}
+
 function SideNavItem({
   href,
   label,
@@ -320,8 +346,8 @@ function NavItem({
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium",
-        active ? "text-primary" : "text-muted-foreground",
+        "relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+        active ? "text-foreground" : "text-muted-foreground",
       )}
     >
       <span className="relative [&_svg]:size-[22px]">

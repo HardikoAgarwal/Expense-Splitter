@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import { ArrowDownLeftIcon, ArrowUpRightIcon, ChevronRightIcon, UsersIcon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
-import { Person, PersonStack } from "@/components/person"
+import { PersonStack } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FIELD, FIELD_LABEL, SECTION_TITLE } from "@/components/field"
@@ -66,14 +66,7 @@ export function GroupsHome({
   }
 
   return (
-    <div className="px-4 md:px-0">
-      <header className="flex items-center justify-between pt-[max(1rem,env(safe-area-inset-top))] pb-4 md:hidden">
-        <p className="text-sm font-medium tracking-[0.18em] text-primary uppercase">Hissa</p>
-        <Link href="/account" aria-label="Account">
-          <Person id={user.id} name={user.displayName} />
-        </Link>
-      </header>
-
+    <div className="px-4 pt-4 md:px-0 md:pt-0">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:pt-6">
         <div>
           <p className="hidden text-sm font-medium tracking-[0.18em] text-primary uppercase md:block">Overview</p>

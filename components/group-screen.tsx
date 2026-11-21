@@ -127,7 +127,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
   return (
     <div>
-      <header className="sticky top-0 z-20 bg-background/70 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 backdrop-blur-xl md:static md:bg-transparent md:px-0 md:pt-6 md:pb-6 md:backdrop-blur-none">
+      <header className="sticky top-0 z-20 bg-background/90 px-4 pt-3 pb-3 backdrop-blur-xl md:static md:bg-transparent md:px-0 md:pt-6 md:pb-6 md:backdrop-blur-none">
         <div className="flex items-center justify-between">
           <BackLink href="/groups" label="Groups" className="mb-0" />
           <div className="flex items-center md:hidden">

@@ -56,7 +56,7 @@ export function SummaryView({
   const net = summary.myPaidPaise - summary.mySharePaise
 
   return (
-    <div className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-6 md:px-0 md:pt-6">
+    <div className="px-4 pt-4 pb-6 md:px-0 md:pt-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
           {backHref ? (
@@ -108,45 +108,29 @@ export function SummaryView({
           <div className="min-w-0">
             <p className="text-sm text-white/75">Spent in {formatMonth(month)}</p>
             <p className="money mt-1 text-[2.75rem] leading-none tracking-tight">{formatINR(summary.totalPaise)}</p>
+            <p className="mt-2 text-sm text-white/70">
+              {summary.count} {summary.count === 1 ? "expense" : "expenses"}
+              {summary.totalPaise > 0 ? ` · your share ${sharePct}%` : null}
+            </p>
           </div>
-          <span className="shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold tracking-wide text-white/90">
-            {summary.count} {summary.count === 1 ? "expense" : "expenses"}
-          </span>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <div className="rounded-[16px] bg-white/12 px-4 py-3 ring-1 ring-white/10">
-            <p className="text-xs font-medium tracking-wide text-white/70 uppercase">Your share</p>
-            <p className="money mt-1.5 text-[1.65rem] leading-none">{formatINR(summary.mySharePaise)}</p>
-            <p className="mt-2 text-xs text-white/65">
-              {summary.totalPaise > 0 ? `${sharePct}% of total spend` : "Nothing to split"}
-            </p>
-            {summary.totalPaise > 0 ? (
-              <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/15">
-                <div className="h-full rounded-full bg-white/80" style={{ width: `${Math.max(4, sharePct)}%` }} />
-              </div>
-            ) : null}
+        <div className="mt-6 flex items-stretch gap-0 border-t border-white/20 pt-4">
+          <div className="min-w-0 flex-1 pr-4">
+            <p className="text-sm text-white/70">Your share</p>
+            <p className="money mt-1 text-[1.5rem] leading-none">{formatINR(summary.mySharePaise)}</p>
           </div>
-          <div className="rounded-[16px] bg-white/12 px-4 py-3 ring-1 ring-white/10">
-            <p className="text-xs font-medium tracking-wide text-white/70 uppercase">You paid</p>
-            <p className="money mt-1.5 text-[1.65rem] leading-none">{formatINR(summary.myPaidPaise)}</p>
-            <p className="mt-2 text-xs text-white/65">
+          <div className="w-px shrink-0 self-stretch bg-white/20" aria-hidden />
+          <div className="min-w-0 flex-1 pl-4">
+            <p className="text-sm text-white/70">You paid</p>
+            <p className="money mt-1 text-[1.5rem] leading-none">{formatINR(summary.myPaidPaise)}</p>
+            <p className="mt-1.5 text-xs text-white/65">
               {net === 0
                 ? "Even with your share"
                 : net > 0
                   ? `${formatINR(net)} more than share`
                   : `${formatINR(Math.abs(net))} less than share`}
             </p>
-            {summary.totalPaise > 0 ? (
-              <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/15">
-                <div
-                  className="h-full rounded-full bg-white/80"
-                  style={{
-                    width: `${Math.max(4, Math.round((summary.myPaidPaise / summary.totalPaise) * 100))}%`,
-                  }}
-                />
-              </div>
-            ) : null}
           </div>
         </div>
       </section>

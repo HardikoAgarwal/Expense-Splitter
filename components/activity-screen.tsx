@@ -95,9 +95,9 @@ export function ActivityScreen({
   }
 
   return (
-    <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))]">
-      <p className="text-sm font-medium tracking-[0.18em] text-primary uppercase">Activity</p>
-      <h1 className="mt-2 text-[1.75rem] font-semibold tracking-tight">What moved</h1>
+    <div className="px-4 pt-4 md:pt-6">
+      <p className="hidden text-sm font-medium tracking-[0.18em] text-primary uppercase md:block">Activity</p>
+      <h1 className="text-[1.75rem] font-semibold tracking-tight md:mt-2">What moved</h1>
 
       {freshNotices.length > 0 ? (
         <Section

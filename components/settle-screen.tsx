@@ -132,7 +132,7 @@ export function SettleScreen({
   const confirmIsPrimary = !otherUpi || upiOpened || desktop
 
   return (
-    <div className="px-4 pt-[max(0.6rem,env(safe-area-inset-top))] pb-8 md:px-0 md:pt-6">
+    <div className="px-4 pt-4 pb-8 md:px-0 md:pt-6">
       <div>
         <BackLink href={`/groups/${group.id}`} label={group.name} />
       </div>

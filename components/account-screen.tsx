@@ -74,7 +74,7 @@ export function AccountScreen({
   }
 
   return (
-    <div className="px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-6 md:px-0 md:pt-6">
+    <div className="px-4 pt-4 pb-6 md:px-0 md:pt-6">
       <ProfileHeader user={user} />
 
       {canManage ? (

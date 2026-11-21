@@ -331,8 +331,8 @@ export function SummaryView({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="relative pt-7">
-      <h2 className="absolute top-0 left-3 z-0 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-[16px] bg-muted/80 px-3.5 pt-2.5 pb-7 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+    <div className="relative pt-6">
+      <h2 className="absolute top-0 left-3 z-0 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-[16px] bg-muted/80 px-3.5 pt-1.5 pb-8 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
         {title}
       </h2>
       <section className="relative z-10 rounded-[16px] bg-card p-4 ring-1 ring-border md:p-5">{children}</section>

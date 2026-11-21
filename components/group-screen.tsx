@@ -544,8 +544,8 @@ function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) 
   return (
     <div className="space-y-5">
       <section>
-        <div className="relative pt-7">
-          <h2 className="absolute top-0 left-3 z-0 inline-flex rounded-[16px] bg-muted/80 px-3.5 pt-2.5 pb-7 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+        <div className="relative pt-6">
+          <h2 className="absolute top-0 left-3 z-0 inline-flex rounded-[16px] bg-muted/80 px-3.5 pt-1.5 pb-8 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
             Who pays whom
           </h2>
           <div className="relative z-10 rounded-[16px] bg-card p-4 ring-1 ring-border">

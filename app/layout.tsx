@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           >
             Skip to content
           </a>
-          <div className="relative min-h-dvh w-full overflow-x-hidden bg-background">
+          <div className="relative min-h-dvh w-full bg-background">
             <div className="top-wash" aria-hidden />
             <div className="relative z-10">{children}</div>
           </div>

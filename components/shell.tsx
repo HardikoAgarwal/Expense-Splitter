@@ -1,8 +1,8 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { BarChart3Icon, BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -52,7 +52,6 @@ export function Shell({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
-  const router = useRouter()
   const searchParams = useSearchParams()
   const usersTab = pathname.startsWith("/account") && searchParams.get("tab") === "users"
   const [picker, setPicker] = useState(false)
@@ -60,23 +59,7 @@ export function Shell({
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<GroupDetail | null>(null)
   const [expense, setExpense] = useState<Expense | null>(null)
-  const [pendingHref, setPendingHref] = useState<string | null>(null)
-  const [, startTransition] = useTransition()
   const onScreen = useRef<GroupDetail | null>(null)
-
-  useEffect(() => {
-    setPendingHref(null)
-  }, [pathname])
-
-  const activePath = pendingHref ?? pathname
-
-  function go(href: string) {
-    if (href === pathname) return
-    setPendingHref(href)
-    startTransition(() => {
-      router.push(href)
-    })
-  }
 
   const registerGroup = useCallback((group: GroupDetail | null) => {
     onScreen.current = group
@@ -202,22 +185,17 @@ export function Shell({
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <main
             id="main"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+var(--bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-10"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+0.75rem)] md:pb-10"
           >
             <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
               <div className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1 md:hidden">
-                <Link href="/groups" className="flex min-w-0 items-center gap-2.5" onClick={() => setPendingHref("/groups")}>
+                <Link href="/groups" className="flex min-w-0 items-center gap-2.5">
                   <Mark className="size-8 shrink-0" />
                   <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
                 </Link>
-                <button
-                  type="button"
-                  aria-label="Account"
-                  className="rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  onClick={() => go("/account")}
-                >
+                <Link href="/account" aria-label="Account" className="rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                   <Person id={user.id} name={user.displayName} />
-                </button>
+                </Link>
               </div>
               {pathname === "/groups" ? <InstallBanner /> : null}
               {children}
@@ -226,33 +204,18 @@ export function Shell({
 
           <nav
             aria-label="Main"
-            className="fixed inset-x-0 bottom-0 z-40 grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] grid-cols-4 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
+            className="relative z-20 grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
           >
-            <NavItem
-              href="/groups"
-              label="Groups"
-              active={activePath.startsWith("/groups") && !activePath.endsWith("/summary")}
-              onNavigate={go}
-            >
+            <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups") && !pathname.endsWith("/summary")}>
               <UsersIcon />
             </NavItem>
-            <NavItem href="/activity" label="Activity" active={activePath.startsWith("/activity")} badge={pending} onNavigate={go}>
+            <NavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
               <BellIcon />
             </NavItem>
-            <NavItem
-              href="/summary"
-              label="Summary"
-              active={activePath.startsWith("/summary") || activePath.endsWith("/summary")}
-              onNavigate={go}
-            >
+            <NavItem href="/summary" label="Summary" active={pathname.startsWith("/summary") || pathname.endsWith("/summary")}>
               <BarChart3Icon />
             </NavItem>
-            <NavItem
-              href="/account"
-              label="Account"
-              active={activePath.startsWith("/account") || activePath.startsWith("/admin")}
-              onNavigate={go}
-            >
+            <NavItem href="/account" label="Account" active={pathname.startsWith("/account") || pathname.startsWith("/admin")}>
               <UserRoundIcon />
             </NavItem>
           </nav>
@@ -261,7 +224,7 @@ export function Shell({
             <button
               type="button"
               onClick={() => void openExpense()}
-              className="fixed right-4 bottom-[calc(var(--bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] z-40 flex size-[var(--fab-size)] items-center justify-center rounded-[18px] gradient-primary shadow-[0_12px_30px_-8px_rgba(31,107,74,0.8)] transition active:scale-95 md:hidden"
+              className="absolute right-4 bottom-[calc(var(--bottom-nav-height)+0.75rem+env(safe-area-inset-bottom))] z-30 flex size-[var(--fab-size)] items-center justify-center rounded-[18px] gradient-primary shadow-[0_12px_30px_-8px_rgba(31,107,74,0.8)] transition active:scale-95 md:hidden"
             >
               <PlusIcon className="size-7" />
               <span className="sr-only">Add expense</span>
@@ -354,26 +317,24 @@ function NavItem({
   active,
   badge,
   children,
-  onNavigate,
 }: {
   href: string
   label: string
   active: boolean
   badge?: number
   children: React.ReactNode
-  onNavigate: (href: string) => void
 }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={href}
+      prefetch
       aria-current={active ? "page" : undefined}
-      onClick={() => onNavigate(href)}
       className={cn(
-        "relative flex h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
+        "relative z-10 flex h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
         active ? "text-foreground" : "text-muted-foreground",
       )}
     >
-      <span className="relative [&_svg]:size-[22px]">
+      <span className="pointer-events-none relative [&_svg]:size-[22px]">
         {children}
         {badge ? (
           <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-negative px-1 text-[10px] font-semibold text-white">
@@ -382,7 +343,7 @@ function NavItem({
           </span>
         ) : null}
       </span>
-      {label}
-    </button>
+      <span className="pointer-events-none">{label}</span>
+    </Link>
   )
 }

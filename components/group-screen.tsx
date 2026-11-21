@@ -115,13 +115,19 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const summaryLink = (
     <Link
       href={`/groups/${group.id}/summary`}
-      className="flex items-center justify-between rounded-[16px] bg-card px-4 py-3.5 ring-1 ring-border transition hover:ring-primary/30"
+      className="flex items-center gap-3 rounded-[16px] bg-card px-4 py-3.5 ring-1 ring-border transition hover:ring-primary/30 active:bg-muted/40"
     >
-      <div>
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{formatMonth(month)}</p>
-        <p className="mt-0.5 font-medium">Group spent {formatINR(monthTotal)}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+          {formatMonth(month)}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Group spent</p>
+        <p className="money mt-0.5 text-[1.45rem] leading-none tracking-tight">{formatINR(monthTotal)}</p>
+        <p className="mt-2 text-xs font-medium text-primary">Tap to view summary</p>
       </div>
-      <ChevronRightIcon className="size-5 text-muted-foreground" />
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+        <ChevronRightIcon className="size-5" />
+      </span>
     </Link>
   )
 
@@ -540,24 +546,67 @@ function ExpenseList({
 function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) {
   return (
     <div className="space-y-5">
-      <section className="rounded-[16px] bg-card p-4 ring-1 ring-border">
-        <h2 className={SECTION_TITLE}>Who pays whom</h2>
-        {group.debts.length === 0 ? (
-          <p className="mt-3 text-sm">Everyone is square.</p>
-        ) : (
-          <ul className="mt-3 space-y-3">
-            {group.debts.map((debt) => (
-              <li key={`${debt.fromUserId}-${debt.toUserId}`} className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">{phrase(debt, userId, group.members)}</span>
-                <span className={cn("money text-lg", debt.toUserId === userId ? "text-positive" : debt.fromUserId === userId ? "text-negative" : "")}>
-                  {formatINR(debt.amountPaise)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+      <section>
+        <div className="relative pt-6">
+          <h2 className="absolute top-0 left-3 z-0 inline-flex rounded-[16px] bg-muted/80 px-3.5 pt-2 pb-6 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+            Who pays whom
+          </h2>
+          <div className="relative z-10 rounded-[16px] bg-card p-4 ring-1 ring-border">
+            {group.debts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Everyone is square.</p>
+            ) : (
+              <ul className="space-y-2.5">
+                {group.debts.map((debt) => {
+                  const from = group.members.find((member) => member.id === debt.fromUserId)
+                  const to = group.members.find((member) => member.id === debt.toUserId)
+                  const mine = debt.fromUserId === userId || debt.toUserId === userId
+                  return (
+                    <li
+                      key={`${debt.fromUserId}-${debt.toUserId}`}
+                      className={cn(
+                        "rounded-[14px] px-3 py-3",
+                        mine ? "bg-accent/55" : "bg-muted/35",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Person id={debt.fromUserId} name={from?.displayName ?? "Someone"} size="sm" />
+                          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          <Person id={debt.toUserId} name={to?.displayName ?? "Someone"} size="sm" />
+                        </div>
+                        <span
+                          className={cn(
+                            "money shrink-0 text-lg",
+                            debt.toUserId === userId
+                              ? "text-positive"
+                              : debt.fromUserId === userId
+                                ? "text-negative"
+                                : "",
+                          )}
+                        >
+                          {formatINR(debt.amountPaise)}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 truncate text-sm font-medium">{phrase(debt, userId, group.members)}</p>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {group.debts.some((debt) => debt.fromUserId === userId || debt.toUserId === userId) ? (
+              <Link
+                href={`/groups/${group.id}/settle`}
+                className="mt-3 flex h-11 items-center justify-center rounded-[12px] bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.99]"
+              >
+                Settle up
+              </Link>
+            ) : null}
+          </div>
+        </div>
       </section>
+
       <section className="space-y-2">
+        <h2 className={cn(SECTION_TITLE, "px-1")}>Balances</h2>
         {group.balances.map((balance) => {
           const member = group.members.find((item) => item.id === balance.userId)
           return (

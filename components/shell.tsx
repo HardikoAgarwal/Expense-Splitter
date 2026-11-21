@@ -291,7 +291,7 @@ export function Shell({
                 </div>
                 <div
                   ref={subheadRef}
-                  className={cn(hasSubhead ? "px-4 pb-2.5" : "pointer-events-none h-0 overflow-hidden")}
+                  className={cn(hasSubhead ? "px-4 pt-1.5 pb-3" : "pointer-events-none h-0 overflow-hidden")}
                 />
               </div>
               {pathname === "/groups" ? <InstallBanner /> : null}

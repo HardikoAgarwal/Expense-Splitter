@@ -115,19 +115,16 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const summaryLink = (
     <Link
       href={`/groups/${group.id}/summary`}
-      className="flex items-center gap-3 rounded-[16px] bg-card px-4 py-3.5 ring-1 ring-border transition hover:ring-primary/30 active:bg-muted/40"
+      className="flex items-end justify-between gap-3 rounded-[16px] bg-card px-4 py-4 ring-1 ring-border transition hover:ring-primary/30 active:bg-muted/40"
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-          {formatMonth(month)}
+          {formatMonth(month)} · group spent
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">Group spent</p>
-        <p className="money mt-0.5 text-[1.45rem] leading-none tracking-tight">{formatINR(monthTotal)}</p>
-        <p className="mt-2 text-xs font-medium text-primary">Tap to view summary</p>
+        <p className="money mt-2 text-[2rem] leading-none tracking-tight">{formatINR(monthTotal)}</p>
+        <p className="mt-2.5 text-xs font-medium text-primary">Tap to view summary</p>
       </div>
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
-        <ChevronRightIcon className="size-5" />
-      </span>
+      <ChevronRightIcon className="mb-0.5 size-5 shrink-0 text-muted-foreground" />
     </Link>
   )
 
@@ -547,8 +544,8 @@ function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) 
   return (
     <div className="space-y-5">
       <section>
-        <div className="relative pt-6">
-          <h2 className="absolute top-0 left-3 z-0 inline-flex rounded-[16px] bg-muted/80 px-3.5 pt-2 pb-6 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+        <div className="relative pt-7">
+          <h2 className="absolute top-0 left-3 z-0 inline-flex rounded-[16px] bg-muted/80 px-3.5 pt-2.5 pb-7 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
             Who pays whom
           </h2>
           <div className="relative z-10 rounded-[16px] bg-card p-4 ring-1 ring-border">

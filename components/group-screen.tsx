@@ -13,7 +13,7 @@ import { ExpenseFilterBar } from "@/components/expense-filters"
 import { Person, PersonStack } from "@/components/person"
 import { ShowList } from "@/components/show-list"
 import { MessagePreview, ShareActions } from "@/components/share-actions"
-import { useExpense, useRegisterGroup } from "@/components/shell"
+import { StickySubhead, useExpense, useRegisterGroup } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FIELD, FIELD_LABEL, SECTION_TITLE } from "@/components/field"
@@ -127,46 +127,61 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
   return (
     <div>
-      <header className="sticky top-[var(--app-bar-height)] z-20 bg-background/70 px-4 pt-3 pb-3 backdrop-blur-xl md:static md:top-auto md:bg-transparent md:px-0 md:pt-6 md:pb-6 md:backdrop-blur-none">
-        <div className="mb-3 hidden md:block">
-          <BackLink href="/groups" label="Groups" className="mb-0" />
-        </div>
-        <div className="md:flex md:items-end md:justify-between md:gap-6">
-          <div className="flex min-w-0 items-center justify-between gap-3 md:justify-start md:gap-4">
-            <h1 className="min-w-0 truncate text-[1.75rem] font-semibold tracking-tight md:text-[2.1rem]">{group.name}</h1>
-            <div className="flex shrink-0 items-center gap-0.5">
+      <StickySubhead>
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <h1 className="min-w-0 truncate text-[1.75rem] font-semibold tracking-tight">{group.name}</h1>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setMembersOpen(true)}
+              aria-label={`${group.members.length} members. Show list`}
+              aria-haspopup="dialog"
+              className="rounded-full p-0.5 transition hover:bg-muted active:scale-[0.98]"
+            >
+              <PersonStack members={group.members} max={4} size="sm" />
+            </button>
+            {isAdmin ? (
               <button
                 type="button"
-                onClick={() => setMembersOpen(true)}
-                aria-label={`${group.members.length} members. Show list`}
-                aria-haspopup="dialog"
-                className="rounded-full p-0.5 transition hover:bg-muted active:scale-[0.98]"
+                onClick={() => setManageOpen(true)}
+                className="flex size-10 items-center justify-center rounded-[12px] active:bg-muted"
               >
-                <PersonStack members={group.members} max={4} size="sm" />
+                <SettingsIcon className="size-5" />
+                <span className="sr-only">Group settings</span>
               </button>
-              {isAdmin ? (
-                <button
-                  type="button"
-                  onClick={() => setManageOpen(true)}
-                  className="flex size-10 items-center justify-center rounded-[12px] md:hidden active:bg-muted"
-                >
-                  <SettingsIcon className="size-5" />
-                  <span className="sr-only">Group settings</span>
-                </button>
-              ) : null}
-              {isAdmin ? (
-                <button
-                  type="button"
-                  onClick={invitePeople}
-                  className="flex size-10 items-center justify-center rounded-[12px] md:hidden active:bg-muted"
-                >
-                  <Share2Icon className="size-5" />
-                  <span className="sr-only">Invite</span>
-                </button>
-              ) : null}
-            </div>
+            ) : null}
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={invitePeople}
+                className="flex size-10 items-center justify-center rounded-[12px] active:bg-muted"
+              >
+                <Share2Icon className="size-5" />
+                <span className="sr-only">Invite</span>
+              </button>
+            ) : null}
           </div>
-          <div className="hidden shrink-0 items-center gap-2 md:flex">
+        </div>
+      </StickySubhead>
+
+      <header className="hidden px-0 pt-6 pb-6 md:block">
+        <div className="mb-3">
+          <BackLink href="/groups" label="Groups" className="mb-0" />
+        </div>
+        <div className="flex items-end justify-between gap-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <h1 className="min-w-0 truncate text-[2.1rem] font-semibold tracking-tight">{group.name}</h1>
+            <button
+              type="button"
+              onClick={() => setMembersOpen(true)}
+              aria-label={`${group.members.length} members. Show list`}
+              aria-haspopup="dialog"
+              className="shrink-0 rounded-full p-0.5 transition hover:bg-muted active:scale-[0.98]"
+            >
+              <PersonStack members={group.members} max={4} size="sm" />
+            </button>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             {isAdmin ? (
               <Button variant="ghost" size="lg" onClick={() => setManageOpen(true)} aria-label="Group settings">
                 <SettingsIcon />

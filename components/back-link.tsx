@@ -20,12 +20,12 @@ export function BackLink({
       <Link
         href={href}
         className={cn(
-          "touch-manipulation inline-flex h-10 max-w-[min(100%,14rem)] items-center gap-0.5 rounded-full py-1 pr-2.5 pl-1 text-sm font-medium text-foreground transition active:bg-muted/70",
+          "touch-manipulation -ml-1 inline-flex h-9 max-w-[min(100%,16rem)] items-center gap-0.5 rounded-[10px] py-1 pr-2.5 pl-0.5 text-sm font-medium text-muted-foreground transition active:bg-muted/70 active:text-foreground",
           className,
         )}
       >
-        <ChevronLeftIcon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="truncate">{label}</span>
+        <ChevronLeftIcon className="size-5 shrink-0" aria-hidden />
+        <span className="truncate text-foreground">{label}</span>
       </Link>
     )
   }

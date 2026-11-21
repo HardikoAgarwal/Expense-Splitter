@@ -160,12 +160,12 @@ export function SummaryView({
           </div>
         ) : null}
 
-        <div className="relative mt-6 grid grid-cols-2 gap-x-5 border-t border-white/20 pt-4">
-          <div className="min-w-0">
+        <div className="relative mt-6 grid grid-cols-2 gap-3">
+          <div className="min-w-0 rounded-[14px] bg-white/10 px-3.5 py-3">
             <p className="text-[11px] font-medium tracking-wide text-white/70 uppercase">Your share</p>
             <p className="money mt-1.5 text-[1.45rem] leading-none">{formatINR(summary.mySharePaise)}</p>
           </div>
-          <div className="min-w-0 border-l border-white/20 pl-5">
+          <div className="min-w-0 rounded-[14px] bg-white/10 px-3.5 py-3">
             <p className="text-[11px] font-medium tracking-wide text-white/70 uppercase">You paid</p>
             <p className="money mt-1.5 text-[1.45rem] leading-none">{formatINR(summary.myPaidPaise)}</p>
             <p className="mt-1.5 text-[11px] leading-snug text-white/65">
@@ -337,11 +337,11 @@ export function SummaryView({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="relative rounded-[16px] bg-card p-4 pt-5 ring-1 ring-border md:p-5 md:pt-6">
-      <h2 className="absolute -top-2.5 left-3 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-full bg-background px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+    <div className="relative pt-3.5">
+      <h2 className="absolute top-0 left-3 z-0 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-[16px] bg-muted/80 px-3 pt-1.5 pb-4 text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
         {title}
       </h2>
-      {children}
-    </section>
+      <section className="relative z-10 rounded-[16px] bg-card p-4 ring-1 ring-border md:p-5">{children}</section>
+    </div>
   )
 }

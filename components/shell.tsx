@@ -1,6 +1,17 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { BarChart3Icon, BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from "lucide-react"
@@ -26,6 +37,14 @@ type ExpenseApi = {
 
 const ExpenseContext = createContext<ExpenseApi | null>(null)
 
+type StickyChromeApi = {
+  target: HTMLElement | null
+  subheadHeight: number
+  setHasSubhead: (on: boolean) => void
+}
+
+const StickyChromeContext = createContext<StickyChromeApi | null>(null)
+
 export function useExpense() {
   const value = useContext(ExpenseContext)
   if (!value) throw new Error("useExpense must be used inside the app shell")
@@ -39,6 +58,26 @@ export function useRegisterGroup(group: GroupDetail) {
     registerGroup(group)
     return () => registerGroup(null)
   }, [group, registerGroup])
+}
+
+/** Renders into the shell’s sticky top chrome on mobile so nav + page head blur as one bar. */
+export function StickySubhead({ children }: { children: ReactNode }) {
+  const chrome = useContext(StickyChromeContext)
+  const setHasSubhead = chrome?.setHasSubhead
+
+  useLayoutEffect(() => {
+    if (!setHasSubhead) return
+    setHasSubhead(true)
+    return () => setHasSubhead(false)
+  }, [setHasSubhead])
+
+  if (!chrome) return null
+  return (
+    <>
+      <div className="md:hidden" style={{ height: chrome.subheadHeight }} aria-hidden />
+      {chrome.target ? createPortal(children, chrome.target) : null}
+    </>
+  )
 }
 
 export function Shell({
@@ -60,6 +99,10 @@ export function Shell({
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<GroupDetail | null>(null)
   const [expense, setExpense] = useState<Expense | null>(null)
+  const [hasSubhead, setHasSubhead] = useState(false)
+  const [subheadHeight, setSubheadHeight] = useState(0)
+  const [subheadTarget, setSubheadTarget] = useState<HTMLElement | null>(null)
+  const subheadRef = useRef<HTMLDivElement>(null)
   const onScreen = useRef<GroupDetail | null>(null)
 
   const registerGroup = useCallback((group: GroupDetail | null) => {
@@ -116,8 +159,31 @@ export function Shell({
       : { href: "/groups", label: "Groups" }
     : null
 
+  useLayoutEffect(() => {
+    setSubheadTarget(subheadRef.current)
+  }, [pinTopBar, hasSubhead])
+
+  useLayoutEffect(() => {
+    const el = subheadRef.current
+    if (!el || !hasSubhead) {
+      setSubheadHeight(0)
+      return
+    }
+    const sync = () => setSubheadHeight(el.offsetHeight)
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [hasSubhead])
+
+  const stickyChrome = useMemo(
+    () => ({ target: subheadTarget, subheadHeight, setHasSubhead }),
+    [subheadTarget, subheadHeight],
+  )
+
   return (
     <ExpenseContext.Provider value={{ openExpense, registerGroup }}>
+      <StickyChromeContext.Provider value={stickyChrome}>
       <div className="relative flex h-dvh flex-col md:flex-row">
         <aside
           aria-label="Main"
@@ -199,40 +265,43 @@ export function Shell({
             id="main"
             className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+0.75rem)] md:pb-10"
           >
-            <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
+            <div
+              className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10"
+              style={
+                topBack
+                  ? ({ ["--app-bar-height" as string]: "calc(var(--app-bar-brand) + var(--app-bar-back))" } as React.CSSProperties)
+                  : undefined
+              }
+            >
               <div
                 className={cn(
-                  "flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5 md:hidden",
+                  "md:hidden",
                   pinTopBar &&
-                    "sticky top-0 z-30 -mx-0 bg-background/70 backdrop-blur-xl supports-backdrop-filter:bg-background/55",
+                    "sticky top-0 z-30 bg-background/80 backdrop-blur-xl supports-backdrop-filter:bg-background/65",
                 )}
               >
-                {topBack ? (
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <BackLink href={topBack.href} label={topBack.label} variant="bar" className="min-w-0" />
-                    <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden />
-                    <Link
-                      href="/groups"
-                      aria-label="Hissa"
-                      className="touch-manipulation flex shrink-0 items-center gap-1.5"
-                    >
-                      <Mark className="size-7" />
-                      <span className="hidden font-semibold tracking-tight min-[380px]:inline">Hissa</span>
-                    </Link>
-                  </div>
-                ) : (
+                <div className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5">
                   <Link href="/groups" className="flex min-w-0 touch-manipulation items-center gap-2.5">
                     <Mark className="size-8 shrink-0" />
                     <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
                   </Link>
-                )}
-                <Link
-                  href="/account"
-                  aria-label="Account"
-                  className="touch-manipulation shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                >
-                  <Person id={user.id} name={user.displayName} />
-                </Link>
+                  <Link
+                    href="/account"
+                    aria-label="Account"
+                    className="touch-manipulation shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <Person id={user.id} name={user.displayName} />
+                  </Link>
+                </div>
+                {topBack ? (
+                  <div className="px-3 pb-1">
+                    <BackLink href={topBack.href} label={topBack.label} variant="bar" />
+                  </div>
+                ) : null}
+                <div
+                  ref={subheadRef}
+                  className={cn(hasSubhead ? "px-4 pb-3" : "pointer-events-none h-0 overflow-hidden")}
+                />
               </div>
               {pathname === "/groups" ? <InstallBanner /> : null}
               {children}
@@ -304,6 +373,7 @@ export function Shell({
           )}
         </div>
       </AppSheet>
+      </StickyChromeContext.Provider>
     </ExpenseContext.Provider>
   )
 }

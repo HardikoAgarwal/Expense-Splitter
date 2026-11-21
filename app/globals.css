@@ -75,7 +75,9 @@
   --ring: oklch(0.42 0.09 155);
   --bottom-nav-height: 4rem;
   --fab-size: 3.5rem;
-  --app-bar-height: calc(2.85rem + env(safe-area-inset-top, 0px));
+  --app-bar-brand: calc(2.85rem + env(safe-area-inset-top, 0px));
+  --app-bar-back: 2.35rem;
+  --app-bar-height: var(--app-bar-brand);
   --vv-height: 100dvh;
   --vv-offset-top: 0px;
   --keyboard-inset: 0px;

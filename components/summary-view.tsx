@@ -60,7 +60,7 @@ export function SummaryView({
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
           {backHref ? (
-            <div>
+            <div className="hidden md:block">
               <BackLink href={backHref} label={backLabel ?? "Back"} />
             </div>
           ) : null}
@@ -103,33 +103,77 @@ export function SummaryView({
         </div>
       </header>
 
-      <section className="gradient-hero mt-5 rounded-[20px] px-5 py-5 text-white md:px-6 md:py-6">
-        <div className="flex items-start justify-between gap-4">
+      <section
+        className={cn(
+          "relative mt-5 overflow-hidden rounded-[22px] px-5 py-5 text-white md:px-6 md:py-6",
+          net < 0 ? "gradient-hero-owe" : "gradient-hero",
+        )}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-16 -right-10 size-44 rounded-full bg-white/10 blur-2xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-20 left-8 size-52 rounded-full bg-black/10 blur-3xl"
+        />
+
+        <div className="relative flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm text-white/75">Spent in {formatMonth(month)}</p>
-            <p className="money mt-1 text-[2.75rem] leading-none tracking-tight">{formatINR(summary.totalPaise)}</p>
-            <p className="mt-2 text-sm text-white/70">
+            <p className="text-[11px] font-semibold tracking-[0.18em] text-white/70 uppercase">
+              Spent in {formatMonth(month)}
+            </p>
+            <p className="money mt-2 text-[2.85rem] leading-none tracking-tight md:text-[3.1rem]">
+              {formatINR(summary.totalPaise)}
+            </p>
+            <p className="mt-2.5 text-sm text-white/75">
               {summary.count} {summary.count === 1 ? "expense" : "expenses"}
-              {summary.totalPaise > 0 ? ` · your share ${sharePct}%` : null}
+              {summary.totalPaise > 0 ? ` · you carry ${sharePct}%` : null}
             </p>
           </div>
+          {summary.totalPaise > 0 ? (
+            <div
+              className="relative grid size-[4.25rem] shrink-0 place-items-center"
+              aria-label={`Your share ${sharePct}%`}
+            >
+              <svg viewBox="0 0 36 36" className="absolute inset-0 size-full -rotate-90" aria-hidden>
+                <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="3" />
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.5"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.92)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(sharePct / 100) * 97.4} 97.4`}
+                />
+              </svg>
+              <span className="relative text-sm font-semibold tabular-nums">{sharePct}%</span>
+            </div>
+          ) : null}
         </div>
 
-        <div className="mt-6 flex items-stretch gap-0 border-t border-white/20 pt-4">
-          <div className="min-w-0 flex-1 pr-4">
-            <p className="text-sm text-white/70">Your share</p>
-            <p className="money mt-1 text-[1.5rem] leading-none">{formatINR(summary.mySharePaise)}</p>
+        {summary.totalPaise > 0 ? (
+          <div className="relative mt-5 h-1.5 overflow-hidden rounded-full bg-white/15" aria-hidden>
+            <div className="h-full rounded-full bg-white/85" style={{ width: `${Math.max(4, sharePct)}%` }} />
           </div>
-          <div className="w-px shrink-0 self-stretch bg-white/20" aria-hidden />
-          <div className="min-w-0 flex-1 pl-4">
-            <p className="text-sm text-white/70">You paid</p>
-            <p className="money mt-1 text-[1.5rem] leading-none">{formatINR(summary.myPaidPaise)}</p>
-            <p className="mt-1.5 text-xs text-white/65">
+        ) : null}
+
+        <div className="relative mt-6 grid grid-cols-2 gap-x-5 border-t border-white/20 pt-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium tracking-wide text-white/70 uppercase">Your share</p>
+            <p className="money mt-1.5 text-[1.45rem] leading-none">{formatINR(summary.mySharePaise)}</p>
+          </div>
+          <div className="min-w-0 border-l border-white/20 pl-5">
+            <p className="text-[11px] font-medium tracking-wide text-white/70 uppercase">You paid</p>
+            <p className="money mt-1.5 text-[1.45rem] leading-none">{formatINR(summary.myPaidPaise)}</p>
+            <p className="mt-1.5 text-[11px] leading-snug text-white/65">
               {net === 0
                 ? "Even with your share"
                 : net > 0
-                  ? `${formatINR(net)} more than share`
-                  : `${formatINR(Math.abs(net))} less than share`}
+                  ? `${formatINR(net)} above share`
+                  : `${formatINR(Math.abs(net))} below share`}
             </p>
           </div>
         </div>
@@ -144,7 +188,7 @@ export function SummaryView({
           <p className="mt-1 text-sm text-muted-foreground">Pick another month, or add an expense to see it here.</p>
         </div>
       ) : (
-        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div className="mt-7 grid gap-7 lg:grid-cols-2">
           <Card title="Spend by category">
             <ul className="space-y-3">
               {topCategories.map((item) => {
@@ -240,7 +284,7 @@ export function SummaryView({
         </div>
       )}
 
-      <div className="mt-5">
+      <div className="mt-7">
         <Card title="Last 6 months">
           <div className="flex h-40 items-end gap-2 sm:gap-4" role="list" aria-label="Spending per month">
             {points.map((point) => {
@@ -293,8 +337,10 @@ export function SummaryView({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-[16px] bg-card p-4 ring-1 ring-border md:p-5">
-      <h2 className="mb-4 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">{title}</h2>
+    <section className="relative rounded-[16px] bg-card p-4 pt-5 ring-1 ring-border md:p-5 md:pt-6">
+      <h2 className="absolute -top-2.5 left-3 inline-flex max-w-[calc(100%-1.5rem)] truncate rounded-full bg-background px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase ring-1 ring-border">
+        {title}
+      </h2>
       {children}
     </section>
   )

@@ -133,7 +133,7 @@ export function SettleScreen({
 
   return (
     <div className="px-4 pt-4 pb-8 md:px-0 md:pt-6">
-      <div>
+      <div className="hidden md:block">
         <BackLink href={`/groups/${group.id}`} label={group.name} />
       </div>
       <h1 className="text-[1.75rem] font-semibold tracking-tight">Settle up</h1>

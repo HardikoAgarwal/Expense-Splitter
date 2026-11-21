@@ -7,6 +7,7 @@ import { BarChart3Icon, BellIcon, PlusIcon, ShieldCheckIcon, UserRoundIcon, User
 import { toast } from "sonner"
 
 import { AppSheet } from "@/components/app-sheet"
+import { BackLink } from "@/components/back-link"
 import { ExpenseSheet } from "@/components/expense-sheet"
 import { InstallBanner } from "@/components/install-banner"
 import { Mark } from "@/components/mark"
@@ -103,8 +104,17 @@ export function Shell({
     pathname.includes("/settle") ||
     pathname.includes("/summary")
   const activeGroupId = pathname.match(/^\/groups\/([^/]+)/)?.[1] ?? null
-  // Group detail pages keep their own sticky blurred header — a second app bar fought taps on iOS.
-  const showBrand = !pathname.match(/^\/groups\/[^/]+/)
+  const groupSub = pathname.match(/^\/groups\/([^/]+)(\/(settle|summary))?$/)
+  // Pin the top bar on group detail / settle / summary so it stays with those sticky headers.
+  const pinTopBar = Boolean(groupSub)
+  const topBack = groupSub
+    ? groupSub[2]
+      ? {
+          href: `/groups/${groupSub[1]}`,
+          label: groups.find((group) => group.id === groupSub[1])?.name ?? "Group",
+        }
+      : { href: "/groups", label: "Groups" }
+    : null
 
   return (
     <ExpenseContext.Provider value={{ openExpense, registerGroup }}>
@@ -190,21 +200,40 @@ export function Shell({
             className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(var(--fab-size)+0.75rem)] md:pb-10"
           >
             <div className="mx-auto w-full max-w-6xl md:px-8 md:pt-4 lg:px-10">
-              {showBrand ? (
-                <div className="flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1 md:hidden">
+              <div
+                className={cn(
+                  "flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5 md:hidden",
+                  pinTopBar &&
+                    "sticky top-0 z-30 -mx-0 bg-background/70 backdrop-blur-xl supports-backdrop-filter:bg-background/55",
+                )}
+              >
+                {topBack ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <BackLink href={topBack.href} label={topBack.label} variant="bar" className="min-w-0" />
+                    <span className="h-4 w-px shrink-0 bg-border/70" aria-hidden />
+                    <Link
+                      href="/groups"
+                      aria-label="Hissa"
+                      className="touch-manipulation flex shrink-0 items-center gap-1.5"
+                    >
+                      <Mark className="size-7" />
+                      <span className="hidden font-semibold tracking-tight min-[380px]:inline">Hissa</span>
+                    </Link>
+                  </div>
+                ) : (
                   <Link href="/groups" className="flex min-w-0 touch-manipulation items-center gap-2.5">
                     <Mark className="size-8 shrink-0" />
                     <span className="text-[1.05rem] font-semibold tracking-tight">Hissa</span>
                   </Link>
-                  <Link
-                    href="/account"
-                    aria-label="Account"
-                    className="touch-manipulation rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  >
-                    <Person id={user.id} name={user.displayName} />
-                  </Link>
-                </div>
-              ) : null}
+                )}
+                <Link
+                  href="/account"
+                  aria-label="Account"
+                  className="touch-manipulation shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <Person id={user.id} name={user.displayName} />
+                </Link>
+              </div>
               {pathname === "/groups" ? <InstallBanner /> : null}
               {children}
             </div>

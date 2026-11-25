@@ -246,5 +246,5 @@ export function isExpenseLocked(
   if (expenseDate < lockedThrough) return true
   if (expenseDate > lockedThrough) return false
   if (!createdAt || !lockTime) return true
-  return createdAt <= lockTime
+  return createdAt < lockTime
 }

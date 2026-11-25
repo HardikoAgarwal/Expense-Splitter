@@ -286,7 +286,10 @@ export async function listGroups(): Promise<GroupCard[]> {
     openFlags,
   ] = await Promise.all([
     requireUser(),
-    supabase.from("group_members").select("group_id, user_id, role, groups(id, name), profiles(id, display_name, email)"),
+    supabase
+      .from("group_members")
+      .select("group_id, user_id, role, groups(id, name), profiles(id, display_name, email)")
+      .is("left_at", null),
     supabase.from("settlements").select("group_id").eq("to_user_id", authUser.id).eq("status", "pending"),
     listOpenFlags(),
   ])
@@ -363,7 +366,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
   ] = await Promise.all([
     requireUser(),
     supabase.from("groups").select("id, name, created_by").eq("id", groupId).maybeSingle(),
-    supabase.from("group_members").select("user_id, role, profiles(id, display_name, email)").eq("group_id", groupId),
+    supabase.from("group_members").select("user_id, role, left_at, profiles(id, display_name, email)").eq("group_id", groupId),
     supabase
       .from("expenses")
       .select(
@@ -383,6 +386,12 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
   fail(balanceError)
   fail(debtError)
 
+  const allMemberRows = memberRows ?? []
+  const activeRows = allMemberRows.filter((row) => !row.left_at)
+  const activeIds = new Set(activeRows.map((row) => row.user_id as string))
+  const nameOf = (id: string) =>
+    asOne(allMemberRows.find((row) => row.user_id === id)?.profiles as { display_name: string } | { display_name: string }[])?.display_name ??
+    "Someone"
   const settlements: Settlement[] = (settlementRows ?? []).map(toSettlement)
   const lockedThrough = lockDate(settlements as LedgerSettlement[])
   const lockTime = lockedAt(settlements as LedgerSettlement[])
@@ -409,6 +418,10 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
         updatedAt: row.updated_at as string,
         shares,
         locked: isExpenseLocked(expenseDate, lockedThrough, row.created_at as string, lockTime),
+        leftMember: (() => {
+          const gone = [row.payer_id as string, ...shares.map((share) => share.userId)].find((id) => !activeIds.has(id))
+          return gone ? nameOf(gone) : null
+        })(),
         disputed: flags.length > 0,
         flags,
       }
@@ -444,7 +457,11 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
     id: group.id,
     name: group.name,
     createdBy: group.created_by,
-    members: (memberRows ?? [])
+    members: activeRows
+      .map((row) => toMember(row as Parameters<typeof toMember>[0]))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    formerMembers: allMemberRows
+      .filter((row) => row.left_at)
       .map((row) => toMember(row as Parameters<typeof toMember>[0]))
       .sort((a, b) => a.displayName.localeCompare(b.displayName)),
     expenses,
@@ -453,7 +470,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
     settlements,
     myNetPaise: balances.find((balance) => balance.userId === user.id)?.netPaise ?? 0,
     lockDate: lockedThrough,
-    myRole: (memberRows ?? []).some(
+    myRole: activeRows.some(
       (row) => row.user_id === user.id && (row.role === "admin" || row.role === "owner"),
     )
       ? "admin"
@@ -477,6 +494,10 @@ export async function deleteGroup(groupId: string) {
 
 export async function removeMember(groupId: string, userId: string) {
   await rpcVoid("remove_group_member", { p_group_id: groupId, p_user_id: userId })
+}
+
+export async function leaveGroup(groupId: string) {
+  await rpcVoid("leave_group", { p_group_id: groupId })
 }
 
 export async function promoteMember(groupId: string, userId: string) {

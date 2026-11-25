@@ -89,7 +89,7 @@ function ExpenseForm({
   onDone: () => void
 }) {
   const { pending: saving, run } = useAction()
-  const locked = Boolean(expense?.locked)
+  const locked = Boolean(expense?.locked || expense?.leftMember)
   const initial = useMemo(
     () => initialState(group.members, expense, userId),
     [group.members, expense, userId],
@@ -250,7 +250,9 @@ function ExpenseForm({
           <>
             {locked || hitsLock ? (
               <Notice tone="neutral" icon={<LockIcon className="size-4" />} title={locked ? "Locked" : "Date locked"}>
-                {locked
+                {expense?.leftMember
+                  ? `${expense.leftMember.split(" ")[0]} left the group, so this can't be changed.`
+                  : locked
                   ? `Settled through ${formatDay(group.lockDate ?? expense!.expenseDate)}.`
                   : `Pick ${formatDay(group.lockDate!)} or later.`}
               </Notice>

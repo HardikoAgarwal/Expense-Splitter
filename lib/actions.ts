@@ -127,6 +127,10 @@ export async function removeMemberAction(groupId: string, userId: string) {
   return run(() => queries.removeMember(groupId, userId))
 }
 
+export async function leaveGroupAction(groupId: string) {
+  return run(() => queries.leaveGroup(groupId))
+}
+
 export async function promoteMemberAction(groupId: string, userId: string) {
   return run(() => queries.promoteMember(groupId, userId))
 }

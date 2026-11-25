@@ -54,7 +54,7 @@ import {
   signInBlockReason,
   signupInputReason,
 } from "@/lib/admin"
-import { groupAdminBlockReason, promoteMemberBlockReason, removeMemberBlockReason } from "@/lib/group-access"
+import { groupAdminBlockReason, memberExitBlockReason, promoteMemberBlockReason } from "@/lib/group-access"
 import { hashPassword, verifyPassword } from "@/lib/demo/password"
 import { DEMO_INVITES, IDS, seedExpenses } from "@/lib/demo/seed-data"
 import { canModifyExpense, ONLY_CREATOR_MESSAGE } from "@/lib/expense-access"
@@ -128,7 +128,7 @@ type DemoNotice = {
 type DemoDb = {
   users: DemoUser[]
   groups: { id: string; name: string; createdBy: string; createdAt: string }[]
-  members: { groupId: string; userId: string; role: "admin" | "member"; joinedAt: string }[]
+  members: { groupId: string; userId: string; role: "admin" | "member"; joinedAt: string; leftAt?: string | null }[]
   invites: {
     id: string
     groupId: string
@@ -308,16 +308,24 @@ function requireAdmin(db: DemoDb, userId: string) {
 }
 
 function memberIds(db: DemoDb, groupId: string) {
-  return db.members.filter((member) => member.groupId === groupId).map((member) => member.userId)
+  return db.members.filter((member) => member.groupId === groupId && !member.leftAt).map((member) => member.userId)
+}
+
+/** Name of the first person in this expense who has left the group, if any. */
+function leftMemberIn(db: DemoDb, expense: { groupId: string; payerId: string; shares: { userId: string; sharePaise: number }[] }) {
+  const active = new Set(memberIds(db, expense.groupId))
+  const involved = [expense.payerId, ...expense.shares.filter((share) => share.sharePaise > 0).map((share) => share.userId)]
+  const gone = involved.find((id) => !active.has(id))
+  return gone ? (db.users.find((user) => user.id === gone)?.displayName ?? "Someone") : null
 }
 
 function assertMember(db: DemoDb, groupId: string, userId: string) {
   if (!memberIds(db, groupId).includes(userId)) throw new AppError("You are not in this group")
 }
 
-function membersOf(db: DemoDb, groupId: string): Member[] {
+function membersOf(db: DemoDb, groupId: string, former = false): Member[] {
   return db.members
-    .filter((member) => member.groupId === groupId)
+    .filter((member) => member.groupId === groupId && Boolean(member.leftAt) === former)
     .map((member) => {
       const user = db.users.find((item) => item.id === member.userId)
       return {
@@ -352,6 +360,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
   const group = db.groups.find((item) => item.id === groupId)
   if (!group || !memberIds(db, groupId).includes(userId)) return null
   const members = membersOf(db, groupId)
+  const formerMembers = membersOf(db, groupId, true)
   const settlements = db.settlements
     .filter((settlement) => settlement.groupId === groupId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -377,6 +386,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
         ...expense,
         shares: expense.shares.filter((share) => share.sharePaise > 0),
         locked: isExpenseLocked(expense.expenseDate, lockedThrough, expense.createdAt, lockTime),
+        leftMember: leftMemberIn(db, expense),
         disputed: flags.length > 0,
         flags,
       }
@@ -393,6 +403,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
     name: group.name,
     createdBy: group.createdBy,
     members,
+    formerMembers,
     expenses,
     balances,
     debts: simplifyDebts(balances),
@@ -400,7 +411,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
     myNetPaise: mine?.netPaise ?? 0,
     lockDate: lockedThrough,
     myRole:
-      db.members.find((member) => member.groupId === groupId && member.userId === userId)?.role === "admin"
+      db.members.find((member) => member.groupId === groupId && member.userId === userId && !member.leftAt)?.role === "admin"
         ? "admin"
         : "member",
   }
@@ -637,7 +648,7 @@ export async function getGroup(userId: string, groupId: string): Promise<GroupDe
 }
 
 function assertGroupAdmin(db: DemoDb, groupId: string, userId: string) {
-  const role = db.members.find((member) => member.groupId === groupId && member.userId === userId)?.role
+  const role = db.members.find((member) => member.groupId === groupId && member.userId === userId && !member.leftAt)?.role
   const blocked = groupAdminBlockReason(role)
   if (blocked) throw new AppError(blocked)
 }
@@ -669,19 +680,47 @@ export async function deleteGroup(userId: string, groupId: string) {
   })
 }
 
+function exitBlock(db: DemoDb, groupId: string, userId: string, self: boolean): string | null {
+  const active = db.members.filter((member) => member.groupId === groupId && !member.leftAt)
+  const target = active.find((member) => member.userId === userId)
+  if (!target) return "That person is not in the group"
+  const detail = presentGroup(db, groupId, active.find((member) => member.userId === userId)!.userId)
+  return memberExitBlockReason({
+    self,
+    role: target.role,
+    adminCount: active.filter((member) => member.role === "admin").length,
+    memberCount: active.length,
+    netPaise: detail?.myNetPaise ?? 0,
+    pendingCount: db.settlements.filter(
+      (settlement) =>
+        settlement.groupId === groupId &&
+        settlement.status === "pending" &&
+        (settlement.fromUserId === userId || settlement.toUserId === userId),
+    ).length,
+  })
+}
+
+function markLeft(db: DemoDb, groupId: string, userId: string) {
+  const row = db.members.find((member) => member.groupId === groupId && member.userId === userId && !member.leftAt)
+  if (row) row.leftAt = new Date().toISOString()
+}
+
 export async function removeMember(actorId: string, groupId: string, userId: string) {
   return withDb(async (db) => {
     assertGroupAdmin(db, groupId, actorId)
-    const target = db.members.find((member) => member.groupId === groupId && member.userId === userId)
-    if (!target) throw new AppError("That person is not in the group")
-    const adminCount = db.members.filter((member) => member.groupId === groupId && member.role === "admin").length
-    const blocked = removeMemberBlockReason({
-      actorRole: "admin",
-      targetRole: target.role,
-      adminCount,
-    })
+    const blocked = exitBlock(db, groupId, userId, actorId === userId)
     if (blocked) throw new AppError(blocked)
-    db.members = db.members.filter((member) => !(member.groupId === groupId && member.userId === userId))
+    markLeft(db, groupId, userId)
+    await persist(db)
+  })
+}
+
+export async function leaveGroup(userId: string, groupId: string) {
+  return withDb(async (db) => {
+    assertMember(db, groupId, userId)
+    const blocked = exitBlock(db, groupId, userId, true)
+    if (blocked) throw new AppError(blocked)
+    markLeft(db, groupId, userId)
     await persist(db)
   })
 }
@@ -761,12 +800,19 @@ export async function joinByCode(userId: string, code: string) {
     if (memberIds(db, invite.groupId).includes(userId)) {
       return { groupId: invite.groupId, alreadyMember: true }
     }
-    db.members.push({
-      groupId: invite.groupId,
-      userId,
-      role: "member",
-      joinedAt: new Date().toISOString(),
-    })
+    const earlier = db.members.find((member) => member.groupId === invite.groupId && member.userId === userId)
+    if (earlier) {
+      earlier.leftAt = null
+      earlier.role = "member"
+      earlier.joinedAt = new Date().toISOString()
+    } else {
+      db.members.push({
+        groupId: invite.groupId,
+        userId,
+        role: "member",
+        joinedAt: new Date().toISOString(),
+      })
+    }
     await persist(db)
     return { groupId: invite.groupId, alreadyMember: false }
   })
@@ -827,6 +873,8 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
     const existing = db.expenses.find((expense) => expense.id === input.id)
     if (!existing || existing.groupId !== input.groupId) throw new AppError("Expense not found")
     if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
+    const gone = leftMemberIn(db, existing)
+    if (gone) throw new AppError(`${gone} left the group, so this expense can no longer be changed`)
     if (isExpenseLocked(existing.expenseDate, lockedThrough, existing.createdAt, lockTime)) {
       throw new AppError("This expense is locked by an approved settlement")
     }
@@ -914,6 +962,8 @@ export async function deleteExpense(userId: string, expenseId: string) {
     if (!existing) throw new AppError("Expense not found")
     assertMember(db, existing.groupId, userId)
     if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
+    const gone = leftMemberIn(db, existing)
+    if (gone) throw new AppError(`${gone} left the group, so this expense can no longer be changed`)
     const ledger = ledgerSettlements(db.settlements.filter((settlement) => settlement.groupId === existing.groupId))
     if (isExpenseLocked(existing.expenseDate, lockDate(ledger), existing.createdAt, lockedAt(ledger))) {
       throw new AppError("This expense is locked by an approved settlement")

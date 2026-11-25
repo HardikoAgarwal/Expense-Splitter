@@ -97,6 +97,8 @@ export type Expense = {
   updatedAt: string
   shares: Share[]
   locked: boolean
+  /** Name of someone in this expense who has left the group; it can no longer be changed. */
+  leftMember?: string | null
   disputed: boolean
   flags: ExpenseFlag[]
 }
@@ -166,6 +168,8 @@ export type GroupDetail = {
   name: string
   createdBy: string
   members: Member[]
+  /** People who left the group. Kept so old expenses still show their names. */
+  formerMembers: Member[]
   expenses: Expense[]
   balances: Balance[]
   debts: Debt[]

@@ -21,6 +21,7 @@ import {
 import { deleteExpenseAction, flagExpenseAction } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
 import { disputeRole, updatedSinceRaised } from "@/lib/disputes"
+import { memberNameIn } from "@/lib/members"
 import { canModifyExpense } from "@/lib/expense-access"
 import { formatDay, formatINR } from "@/lib/money"
 import type { Expense, GroupDetail, SessionUser } from "@/lib/types"
@@ -48,7 +49,7 @@ export function ExpenseDetail({
   const myFlag = expense?.flags.find((flag) => flag.userId === user.id) ?? null
   const canFlag = mine > 0 && !myFlag && expense?.createdBy !== user.id
   const canModify = canModifyExpense(expense, user.id)
-  const fullName = (id: string) => group.members.find((member) => member.id === id)?.displayName ?? "Former member"
+  const fullName = (id: string) => memberNameIn(group, id, "Former member")
   const nameOf = (id: string) => (id === user.id ? "You" : fullName(id))
   const participants = (expense?.shares ?? []).filter((share) => share.sharePaise > 0)
   // When a flag waits on you and you've already edited since, asking is the main step, not editing again.
@@ -91,9 +92,12 @@ export function ExpenseDetail({
         title={expense?.description ?? "Expense"}
         footer={
           expense && canModify ? (
-            expense.locked ? (
-              <p className="flex w-full items-center justify-center gap-2 py-1 text-sm text-muted-foreground">
-                <LockIcon className="size-4" aria-hidden /> Locked by an approved settlement
+            expense.locked || expense.leftMember ? (
+              <p className="flex w-full items-center justify-center gap-2 py-1 text-center text-sm text-muted-foreground">
+                <LockIcon className="size-4 shrink-0" aria-hidden />
+                {expense.leftMember
+                  ? `${expense.leftMember.split(" ")[0]} left the group, so this can't be changed`
+                  : "Locked by an approved settlement"}
               </p>
             ) : (
               <div className="grid w-full grid-cols-2 gap-2">
@@ -173,7 +177,7 @@ export function ExpenseDetail({
                         awaiting: openFlag.awaiting,
                         flaggerName: fullName(openFlag.userId),
                         ownerName: fullName(expense.createdBy),
-                        canEdit: canModify && !expense.locked,
+                        canEdit: canModify && !expense.locked && !expense.leftMember,
                         updatedSinceRaised: updatedSinceRaised(openFlag, expense.updatedAt),
                       }}
                     />

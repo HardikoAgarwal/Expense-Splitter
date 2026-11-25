@@ -20,6 +20,7 @@ import {
   suggestSettlementAction,
 } from "@/lib/actions"
 import { disputedExpensesInRange } from "@/lib/disputes"
+import { memberNameIn } from "@/lib/members"
 import { formatDay, formatINR, paiseToInput, rupeesToPaise, todayISO } from "@/lib/money"
 import { settleBreakdown } from "@/lib/settle"
 import type { GroupDetail, SessionUser, Settlement } from "@/lib/types"
@@ -325,7 +326,7 @@ export function SettleScreen({
             {otherRequests.map((item) => (
               <RequestRow
                 key={item.id}
-                name={group.members.find((member) => member.id === item.fromUserId)?.displayName.split(" ")[0] ?? "Someone"}
+                name={memberNameIn(group, item.fromUserId).split(" ")[0]}
                 request={item}
                 busy={resolver.pending}
                 onResolve={resolve}
@@ -344,8 +345,8 @@ export function SettleScreen({
               items={group.settlements}
               limit={4}
               render={(item) => {
-                const from = group.members.find((member) => member.id === item.fromUserId)?.displayName.split(" ")[0]
-                const to = group.members.find((member) => member.id === item.toUserId)?.displayName.split(" ")[0]
+                const from = memberNameIn(group, item.fromUserId).split(" ")[0]
+                const to = memberNameIn(group, item.toUserId).split(" ")[0]
                 const mine = item.createdBy === user.id && item.status === "pending"
                 return (
                   <div key={item.id} className="flex items-start justify-between gap-3 py-3.5">

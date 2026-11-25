@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
+import { ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { BackLink } from "@/components/back-link"
 import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseDetail } from "@/components/expense-detail"
+import { ExitGroupSheet } from "@/components/leave-group"
 import { ExpenseFilterBar } from "@/components/expense-filters"
 import { Person, PersonStack } from "@/components/person"
 import { ShowList } from "@/components/show-list"
@@ -22,13 +23,13 @@ import {
   deleteGroupAction,
   promoteMemberAction,
   regenerateInviteAction,
-  removeMemberAction,
   renameGroupAction,
   revokeInvitesAction,
 } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
 import { disputeChip, disputeNeedsMe } from "@/lib/disputes"
 import { EMPTY_FILTERS, filterExpenses, type ExpenseFilters } from "@/lib/expense-filters"
+import { memberNameIn } from "@/lib/members"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
 import type { Debt, GroupDetail, Member, SessionUser } from "@/lib/types"
@@ -51,7 +52,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     if (!linked) return
     router.replace(`/groups/${group.id}`, { scroll: false })
     const target = editId ? group.expenses.find((expense) => expense.id === editId) : null
-    if (target && target.createdBy === user.id && !target.locked) openExpense(group.id, target)
+    if (target && target.createdBy === user.id && !target.locked && !target.leftMember) openExpense(group.id, target)
   }, [linked, editId, group, user.id, router, openExpense])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
@@ -59,10 +60,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const [invite, setInvite] = useState<{ code: string; expiresAt: string } | null>(null)
   const [groupName, setGroupName] = useState(group.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [exitTarget, setExitTarget] = useState<Member | null>(null)
   const inviting = useAction()
   const managing = useAction()
   const isAdmin = group.myRole === "admin"
   const adminCount = group.members.filter((member) => member.role === "admin").length
+  const selfMember = group.members.find((member) => member.id === user.id) ?? null
   const month = monthStartISO(todayISO())
   const monthTotal = group.expenses
     .filter((expense) => expense.expenseDate.startsWith(month.slice(0, 7)))
@@ -95,8 +98,10 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     })
   }
 
-  function removePerson(member: Member) {
-    managing.run(() => removeMemberAction(group.id, member.id), { success: "Removed" })
+  function startExit(member: Member) {
+    setMembersOpen(false)
+    setManageOpen(false)
+    setExitTarget(member)
   }
 
   function rename(event: React.FormEvent) {
@@ -339,6 +344,19 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         onOpenChange={setMembersOpen}
         title="Members"
         description={`${group.members.length} ${group.members.length === 1 ? "person" : "people"} in ${group.name}`}
+        footer={
+          selfMember ? (
+            <Button
+              variant="outline"
+              size="xl"
+              className="w-full text-negative hover:text-negative"
+              onClick={() => startExit(selfMember)}
+            >
+              <LogOutIcon />
+              Leave group
+            </Button>
+          ) : undefined
+        }
       >
         <ul className="divide-y pb-2">
           {group.members.map((member) => (
@@ -357,7 +375,22 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
             </li>
           ))}
         </ul>
+        {group.formerMembers.length > 0 ? (
+          <div className="pt-2 pb-3">
+            <h3 className={cn(SECTION_TITLE, "mb-1")}>Left the group</h3>
+            <ul className="divide-y">
+              {group.formerMembers.map((member) => (
+                <li key={member.id} className="flex items-center gap-3 py-2.5 opacity-70">
+                  <Person id={member.id} name={member.displayName} />
+                  <p className="min-w-0 flex-1 truncate text-sm">{member.displayName}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </AppSheet>
+
+      <ExitGroupSheet group={group} viewerId={user.id} target={exitTarget} onClose={() => setExitTarget(null)} />
 
       <AppSheet open={manageOpen} onOpenChange={setManageOpen} title="Group settings">
         <div className="space-y-6 pb-4">
@@ -385,25 +418,36 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
           </form>
           <div className="space-y-3">
             <h3 className={SECTION_TITLE}>Participants</h3>
-            {group.members.map((member) => (
-              <div key={member.id} className="flex items-center gap-3">
-                <Person id={member.id} name={member.displayName} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{member.displayName}</p>
-                  <p className="text-xs text-muted-foreground">{member.role === "admin" ? "Admin" : "Member"}</p>
+            {group.members.map((member) => {
+              const net = group.balances.find((balance) => balance.userId === member.id)?.netPaise ?? 0
+              return (
+                <div key={member.id} className="flex items-center gap-3">
+                  <Person id={member.id} name={member.displayName} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      {member.displayName}
+                      {member.id === user.id ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">(You)</span> : null}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {member.role === "admin" ? "Admin" : "Member"} ·{" "}
+                      <span className={cn(net < 0 && "text-negative", net > 0 && "text-positive")}>
+                        {net === 0 ? "Settled up" : net < 0 ? `Owes ${formatINR(-net)}` : `Is owed ${formatINR(net)}`}
+                      </span>
+                    </p>
+                  </div>
+                  {member.role !== "admin" ? (
+                    <Button variant="ghost" size="sm" className="text-primary" disabled={managing.pending} onClick={() => promote(member)}>
+                      Promote
+                    </Button>
+                  ) : null}
+                  {member.id !== user.id ? (
+                    <Button variant="ghost" size="sm" className="text-negative" disabled={managing.pending} onClick={() => startExit(member)}>
+                      Remove
+                    </Button>
+                  ) : null}
                 </div>
-                {member.role !== "admin" ? (
-                  <Button variant="ghost" size="sm" className="text-primary" disabled={managing.pending} onClick={() => promote(member)}>
-                    Promote
-                  </Button>
-                ) : null}
-                {member.role === "admin" && adminCount <= 1 ? null : (
-                  <Button variant="ghost" size="sm" className="text-negative" disabled={managing.pending} onClick={() => removePerson(member)}>
-                    Remove
-                  </Button>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
           {confirmDelete ? (
             <div className="space-y-2 rounded-[12px] bg-negative/8 p-3">
@@ -508,7 +552,7 @@ function ExpenseList({
         const previous = index > 0 ? formatMonth(expenses[index - 1].expenseDate) : ""
         const showMonth = month !== previous
         const mine = expense.shares.find((share) => share.userId === userId)?.sharePaise ?? 0
-        const payer = group.members.find((member) => member.id === expense.payerId)?.displayName ?? "Someone"
+        const payer = memberNameIn(group, expense.payerId)
         return (
           <div key={expense.id}>
             {showMonth ? (
@@ -542,11 +586,11 @@ function ExpenseList({
                       {disputeChip(
                         expense.flags.find((flag) => disputeNeedsMe(flag, expense, userId)) ?? expense.flags[0],
                         userId,
-                        (id) => group.members.find((member) => member.id === id)?.displayName ?? "them",
+                        (id) => memberNameIn(group, id, "them"),
                       )}
                     </span>
                   ) : null}
-                  {expense.locked ? <LockIcon className="size-3.5 text-muted-foreground" /> : null}
+                  {expense.locked || expense.leftMember ? <LockIcon className="size-3.5 text-muted-foreground" /> : null}
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                   {payer.split(" ")[0]} paid · {formatDay(expense.expenseDate)} · {categoryLabel(expense.category)}

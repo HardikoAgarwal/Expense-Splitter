@@ -110,6 +110,9 @@ describe("demo ledger rules", () => {
     }
     const before = await db.saveExpense(aarav.id, { ...base, description: "Before settling", expenseDate: today })
 
+    // Timestamps are millisecond precise; keep "before" and "after" clearly apart.
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+    await tick()
     const settlementId = await db.requestSettlement(IDS.meera, {
       groupId: IDS.flat,
       toUserId: IDS.aarav,
@@ -117,6 +120,7 @@ describe("demo ledger rules", () => {
       upToDate: today,
     })
     await db.resolveSettlement(aarav.id, settlementId, true)
+    await tick()
 
     // The expense that existed at approval is locked; today is otherwise still open.
     await expect(
@@ -142,6 +146,65 @@ describe("demo ledger rules", () => {
     await expect(
       db.saveExpense(aarav.id, { ...base, description: "Future", expenseDate: todayISO(f) }),
     ).rejects.toThrow(/future/)
+  })
+
+  it("lets a settled-up member leave, keeps their history, and freezes expenses they were in", async () => {
+    const db = await import("@/lib/demo/db")
+    const { todayISO } = await import("@/lib/money")
+    const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
+    const meera = await db.authenticate("meera@hissa.app", "demo1234")
+
+    // Meera owes money, so she cannot leave and Aarav cannot remove her.
+    await expect(db.leaveGroup(meera.id, IDS.flat)).rejects.toThrow(/still owe/)
+    await expect(db.removeMember(aarav.id, IDS.flat, meera.id)).rejects.toThrow(/still owe/)
+    // The only admin cannot leave while others remain.
+    await expect(db.leaveGroup(aarav.id, IDS.flat)).rejects.toThrow()
+    // Members cannot remove each other.
+    await expect(db.removeMember(meera.id, IDS.flat, aarav.id)).rejects.toThrow(/admin/)
+
+    // Aarav approves the payment already waiting in the seed data, then Meera pays the rest.
+    const seeded = (await db.getGroup(meera.id, IDS.flat))?.settlements.find((item) => item.status === "pending")
+    if (seeded) await db.resolveSettlement(aarav.id, seeded.id, true)
+    // An expense Aarav adds with Meera in it; it must freeze once she leaves.
+    const sharedId = await db.saveExpense(aarav.id, {
+      groupId: IDS.flat,
+      description: "Shared snack",
+      amountPaise: 2000,
+      payerId: aarav.id,
+      expenseDate: todayISO(),
+      category: "other",
+      shares: splitEqually(2000, [IDS.aarav, IDS.meera]),
+    })
+    const before = await db.getGroup(meera.id, IDS.flat)
+    const owed = -(before?.myNetPaise ?? 0)
+    expect(owed).toBeGreaterThan(0)
+    const settlementId = await db.requestSettlement(meera.id, {
+      groupId: IDS.flat,
+      toUserId: aarav.id,
+      amountPaise: owed,
+      upToDate: todayISO(),
+    })
+    await expect(db.leaveGroup(meera.id, IDS.flat)).rejects.toThrow(/waiting for approval|still owe/)
+    await db.resolveSettlement(aarav.id, settlementId, true)
+
+    await db.leaveGroup(meera.id, IDS.flat)
+
+    // She is out: no access, not in the member list, but her name stays on old expenses.
+    expect(await db.getGroup(meera.id, IDS.flat)).toBeNull()
+    const after = await db.getGroup(aarav.id, IDS.flat)
+    expect(after?.members.map((member) => member.displayName)).not.toContain("Meera Shah")
+    expect(after?.formerMembers.map((member) => member.displayName)).toEqual(["Meera Shah"])
+    const involved = after?.expenses.filter((expense) => expense.leftMember === "Meera Shah") ?? []
+    expect(involved.length).toBeGreaterThan(0)
+    expect(involved.some((expense) => expense.id === sharedId)).toBe(true)
+    await expect(db.deleteExpense(aarav.id, sharedId)).rejects.toThrow(/left the group/)
+
+    // She can come back with the invite code and is a normal member again.
+    const rejoined = await db.joinByCode(meera.id, "flat4b7k")
+    expect(rejoined.alreadyMember).toBe(false)
+    const back = await db.getGroup(aarav.id, IDS.flat)
+    expect(back?.formerMembers).toHaveLength(0)
+    expect(back?.members.map((member) => member.displayName)).toContain("Meera Shah")
   })
 
   it("creates an account from a group invite and puts them in the group", async () => {

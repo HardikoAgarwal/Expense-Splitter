@@ -182,6 +182,12 @@ export async function removeMember(groupId: string, userId: string) {
   return demo.removeMember(user.id, groupId, userId)
 }
 
+export async function leaveGroup(groupId: string) {
+  const user = await actorOrThrow()
+  if (!isDemoMode()) return remote.leaveGroup(groupId)
+  return demo.leaveGroup(user.id, groupId)
+}
+
 export async function promoteMember(groupId: string, userId: string) {
   const user = await actorOrThrow()
   if (!isDemoMode()) return remote.promoteMember(groupId, userId)

@@ -62,6 +62,10 @@ export async function signUpWithLinkAction(token: string, input: { name: string;
   return run(() => queries.signUpWithLink(token, input))
 }
 
+export async function signUpForGroupAction(code: string, input: { name: string; email: string; password: string }) {
+  return run(() => queries.signUpForGroup(code, input))
+}
+
 export async function setUserDisabledAction(userId: string, disabled: boolean) {
   return run(() => queries.setUserDisabled(userId, disabled))
 }

@@ -96,6 +96,67 @@ describe("demo ledger rules", () => {
     ).rejects.toThrow(/invalid or already used/)
   })
 
+  it("keeps the settled day open for new expenses and blocks future dates", async () => {
+    const db = await import("@/lib/demo/db")
+    const { todayISO } = await import("@/lib/money")
+    const today = todayISO()
+    const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
+    const base = {
+      groupId: IDS.flat,
+      payerId: aarav.id,
+      category: "other" as const,
+      shares: splitEqually(1000, [IDS.aarav, IDS.meera]),
+      amountPaise: 1000,
+    }
+    const before = await db.saveExpense(aarav.id, { ...base, description: "Before settling", expenseDate: today })
+
+    const settlementId = await db.requestSettlement(IDS.meera, {
+      groupId: IDS.flat,
+      toUserId: IDS.aarav,
+      amountPaise: 500,
+      upToDate: today,
+    })
+    await db.resolveSettlement(aarav.id, settlementId, true)
+
+    // The expense that existed at approval is locked; today is otherwise still open.
+    await expect(
+      db.saveExpense(aarav.id, { ...base, id: before, description: "Edit", expenseDate: today }),
+    ).rejects.toThrow(/locked/)
+    const after = await db.saveExpense(aarav.id, { ...base, description: "After settling", expenseDate: today })
+    await db.saveExpense(aarav.id, { ...base, id: after, description: "After, edited", expenseDate: today })
+    const group = await db.getGroup(aarav.id, IDS.flat)
+    expect(group?.expenses.find((e) => e.id === before)?.locked).toBe(true)
+    expect(group?.expenses.find((e) => e.id === after)?.locked).toBe(false)
+    await db.deleteExpense(aarav.id, after)
+
+    // Yesterday is before the settled date, so it stays locked.
+    const y = new Date()
+    y.setDate(y.getDate() - 1)
+    await expect(
+      db.saveExpense(aarav.id, { ...base, description: "Yesterday", expenseDate: todayISO(y) }),
+    ).rejects.toThrow(/locked/)
+
+    // Dates after tomorrow are rejected (one day of slack for time zones).
+    const f = new Date()
+    f.setDate(f.getDate() + 3)
+    await expect(
+      db.saveExpense(aarav.id, { ...base, description: "Future", expenseDate: todayISO(f) }),
+    ).rejects.toThrow(/future/)
+  })
+
+  it("creates an account from a group invite and puts them in the group", async () => {
+    const db = await import("@/lib/demo/db")
+    const email = await db.createInvitedUser({ name: "Tara Nair", email: "tara@hissa.app", password: "secret123" })
+    await expect(
+      db.createInvitedUser({ name: "Tara Nair", email: "TARA@hissa.app", password: "secret123" }),
+    ).rejects.toThrow(/already exists/)
+    const user = await db.authenticate(email, "secret123")
+    const joined = await db.joinByCode(user.id, "flat4b7k")
+    expect(joined.alreadyMember).toBe(false)
+    const group = await db.getGroup(user.id, joined.groupId)
+    expect(group?.members.map((member) => member.displayName)).toContain("Tara Nair")
+  })
+
   it("expires invites and lets a new roommate join a live code", async () => {
     const db = await import("@/lib/demo/db")
     const expired = await db.previewInvite(null, "NOPE")

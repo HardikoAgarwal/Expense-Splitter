@@ -1,10 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 
 import { Mark } from "@/components/mark"
 import { Button } from "@/components/ui/button"
-import { joinGroupAction } from "@/lib/actions"
+import { SignupForm, type SignupValues } from "@/components/signup-form"
+import { joinGroupAction, signUpForGroupAction } from "@/lib/actions"
 import type { InvitePreview, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 
@@ -18,12 +20,24 @@ export function JoinScreen({
   user: SessionUser | null
 }) {
   const { pending, run } = useAction()
+  const [error, setError] = useState<string | null>(null)
   const next = `/join/${code}`
 
   function join() {
     run(() => joinGroupAction(code), {
       navigate: (data) => `/groups/${data.groupId}`,
       success: (data) => (data.alreadyMember ? "You are already in" : "You joined"),
+    })
+  }
+
+  function signUp(values: SignupValues) {
+    setError(null)
+    run(() => signUpForGroupAction(code, values), {
+      navigate: (data) => `/groups/${data.groupId}`,
+      replace: true,
+      success: (data) => `Welcome, ${data.user.displayName.split(" ")[0]}`,
+      onError: setError,
+      toastError: false,
     })
   }
 
@@ -46,9 +60,22 @@ export function JoinScreen({
           </p>
           <div className="mt-8">
             {!user ? (
-              <Button size="xl" className="w-full" render={<Link href={`/login?next=${encodeURIComponent(next)}`} />}>
-                Sign in to join
-              </Button>
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground">Create your account to join. It takes a few seconds.</p>
+                <SignupForm
+                  onSubmit={signUp}
+                  pending={pending}
+                  error={error}
+                  label={`Join ${preview.groupName}`}
+                  pendingLabel="Creating…"
+                />
+                <p className="text-center text-sm text-muted-foreground">
+                  Already on Hissa?{" "}
+                  <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-medium text-foreground underline">
+                    Sign in to join
+                  </Link>
+                </p>
+              </div>
             ) : preview.reason === "already_member" && preview.groupId ? (
               <Button size="xl" className="w-full" render={<Link href={`/groups/${preview.groupId}`} />}>
                 Open group

@@ -193,3 +193,28 @@ export async function redeemSignupLink(token: string, input: { name: string; ema
   await admin.from("signup_links").update({ used_by: userId }).eq("id", claimed.id)
   return email
 }
+
+/** Creates an account for someone arriving through a group invite. The caller has already checked the code. */
+export async function createInvitedUser(input: { name: string; email: string; password: string }) {
+  const problem = signupInputReason(input)
+  if (problem) throw new AppError(problem)
+  const email = input.email.trim().toLowerCase()
+  const displayName = input.name.trim()
+  const admin = createServiceClient()
+  const created = await admin.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { display_name: displayName },
+  })
+  if (created.error || !created.data.user) {
+    const message = created.error?.message ?? ""
+    throw new AppError(/already|registered|exists/i.test(message) ? "An account with that email already exists. Sign in instead." : "Could not create your account")
+  }
+  const { error } = await admin
+    .from("profiles")
+    .update({ invited: true, is_admin: false, disabled: false, display_name: displayName })
+    .eq("id", created.data.user.id)
+  if (error) throw new AppError(error.message)
+  return email
+}

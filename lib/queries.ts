@@ -69,6 +69,18 @@ export async function signUpWithLink(token: string, input: { name: string; email
   return signIn(email, input.password)
 }
 
+/** Group invite for someone with no account: create it, sign them in, and add them to the group. */
+export async function signUpForGroup(code: string, input: { name: string; email: string; password: string }) {
+  const preview = await previewInvite(code)
+  if (!preview.valid) {
+    throw new Error(preview.reason === "expired" ? "This invite has expired" : "This invite is invalid")
+  }
+  const email = isDemoMode() ? await demo.createInvitedUser(input) : await accounts.createInvitedUser(input)
+  const user = await signIn(email, input.password)
+  const joined = await joinByCode(code)
+  return { user, groupId: joined.groupId }
+}
+
 export async function setUserDisabled(userId: string, disabled: boolean) {
   const user = await actorOrThrow()
   if (isDemoMode()) return demo.setUserDisabled(user.id, userId, disabled)

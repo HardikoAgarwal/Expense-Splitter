@@ -1329,3 +1329,28 @@ export async function redeemSignupLink(token: string, input: { name: string; ema
     return email
   })
 }
+
+export async function createInvitedUser(input: { name: string; email: string; password: string }) {
+  return withDb(async (db) => {
+    const problem = signupInputReason(input)
+    if (problem) throw new AppError(problem)
+    const email = input.email.trim().toLowerCase()
+    if (db.users.some((user) => user.email === email)) {
+      throw new AppError("An account with that email already exists. Sign in instead.")
+    }
+    const { hash, salt } = hashPassword(input.password)
+    db.users.push({
+      id: randomUUID(),
+      email,
+      displayName: input.name.trim(),
+      passwordHash: hash,
+      passwordSalt: salt,
+      createdAt: new Date().toISOString(),
+      isAdmin: false,
+      disabled: false,
+      invited: true,
+    })
+    await persist(db)
+    return email
+  })
+}

@@ -38,6 +38,8 @@ import type {
   Member,
   AppUser,
   CreatedAccount,
+  SignupLink,
+  SignupLinkPreview,
   SaveExpenseInput,
   SessionUser,
   Settlement,
@@ -48,7 +50,9 @@ import {
   inviteBlockReason,
   inviteLimitReason,
   mutateUserBlockReason,
+  SIGNUP_LINK_DAYS,
   signInBlockReason,
+  signupInputReason,
 } from "@/lib/admin"
 import { groupAdminBlockReason, promoteMemberBlockReason, removeMemberBlockReason } from "@/lib/group-access"
 import { hashPassword, verifyPassword } from "@/lib/demo/password"
@@ -80,8 +84,15 @@ type DemoUser = {
 type AccountInvite = {
   id: string
   userId: string
-  invitedBy?: string
   token: string
+  expiresAt: string
+  usedAt: string | null
+}
+
+type SignupLinkRow = {
+  id: string
+  token: string
+  createdBy: string
   expiresAt: string
   usedAt: string | null
 }
@@ -129,6 +140,7 @@ type DemoDb = {
   expenses: DemoExpense[]
   settlements: Settlement[]
   accountInvites: AccountInvite[]
+  signupLinks: SignupLinkRow[]
   flags: DemoFlag[]
   notices: DemoNotice[]
 }
@@ -171,6 +183,7 @@ async function persist(db: DemoDb) {
 
 function normalize(db: DemoDb): DemoDb {
   db.accountInvites ??= []
+  db.signupLinks ??= []
   db.flags ??= []
   db.notices ??= []
   db.members = (db.members ?? []).map((member) => ({
@@ -261,6 +274,7 @@ function createSeed(): DemoDb {
       },
     ],
     accountInvites: [],
+    signupLinks: [],
     flags: [],
     notices: [],
   }
@@ -459,12 +473,7 @@ export async function createAccount(
   input: { email: string; displayName: string },
 ): Promise<CreatedAccount> {
   return withDb(async (db) => {
-    const actor = requireUser(db, actorId)
-    const blocked = inviteBlockReason(accessOf(actor))
-    if (blocked) throw new AppError(blocked)
-    const sent = db.accountInvites.filter((invite) => invite.invitedBy === actorId).length
-    const limited = inviteLimitReason(accessOf(actor), sent)
-    if (limited) throw new AppError(limited)
+    requireAdmin(db, actorId)
     const email = input.email.trim().toLowerCase()
     const displayName = input.displayName.trim()
     if (displayName.length < 2 || displayName.length > 40) {
@@ -492,7 +501,6 @@ export async function createAccount(
     db.accountInvites.push({
       id: randomUUID(),
       userId: user.id,
-      invitedBy: actorId,
       token,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       usedAt: null,
@@ -1264,5 +1272,60 @@ export async function getUpiIds(): Promise<Record<string, string>> {
     const out: Record<string, string> = {}
     for (const user of db.users) if (user.upiId) out[user.id] = user.upiId
     return out
+  })
+}
+
+export async function createSignupLink(actorId: string): Promise<SignupLink> {
+  return withDb(async (db) => {
+    const actor = requireUser(db, actorId)
+    const blocked = inviteBlockReason(accessOf(actor))
+    if (blocked) throw new AppError(blocked)
+    const sent = db.signupLinks.filter((link) => link.createdBy === actorId).length
+    const limited = inviteLimitReason(accessOf(actor), sent)
+    if (limited) throw new AppError(limited)
+    const token = generateSecret(24)
+    const expiresAt = new Date(Date.now() + SIGNUP_LINK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    db.signupLinks.push({ id: randomUUID(), token, createdBy: actorId, expiresAt, usedAt: null })
+    await persist(db)
+    return { path: `/invite/${token}`, expiresAt }
+  })
+}
+
+export async function previewSignupLink(token: string): Promise<SignupLinkPreview> {
+  return withDb((db) => {
+    const link = db.signupLinks.find((item) => item.token === token)
+    if (!link || link.usedAt || Date.parse(link.expiresAt) <= Date.now()) return { valid: false }
+    const inviter = db.users.find((user) => user.id === link.createdBy)
+    return { valid: true, inviterName: inviter?.displayName }
+  })
+}
+
+export async function redeemSignupLink(token: string, input: { name: string; email: string; password: string }) {
+  return withDb(async (db) => {
+    const problem = signupInputReason(input)
+    if (problem) throw new AppError(problem)
+    const link = db.signupLinks.find((item) => item.token === token)
+    if (!link || link.usedAt || Date.parse(link.expiresAt) <= Date.now()) {
+      throw new AppError("This invite link is invalid or already used")
+    }
+    const email = input.email.trim().toLowerCase()
+    if (db.users.some((user) => user.email === email)) {
+      throw new AppError("An account with that email already exists")
+    }
+    const { hash, salt } = hashPassword(input.password)
+    db.users.push({
+      id: randomUUID(),
+      email,
+      displayName: input.name.trim(),
+      passwordHash: hash,
+      passwordSalt: salt,
+      createdAt: new Date().toISOString(),
+      isAdmin: false,
+      disabled: false,
+      invited: true,
+    })
+    link.usedAt = new Date().toISOString()
+    await persist(db)
+    return email
   })
 }

@@ -52,6 +52,23 @@ export async function createAccount(input: { email: string; displayName: string 
   return accounts.createAccount(user, input)
 }
 
+export async function createSignupLink() {
+  const user = await actorOrThrow()
+  if (isDemoMode()) return demo.createSignupLink(user.id)
+  return accounts.createSignupLink(user)
+}
+
+export async function previewSignupLink(token: string) {
+  if (isDemoMode()) return demo.previewSignupLink(token)
+  return accounts.previewSignupLink(token)
+}
+
+/** Creates the account from a link, then signs the new person in. */
+export async function signUpWithLink(token: string, input: { name: string; email: string; password: string }) {
+  const email = isDemoMode() ? await demo.redeemSignupLink(token, input) : await accounts.redeemSignupLink(token, input)
+  return signIn(email, input.password)
+}
+
 export async function setUserDisabled(userId: string, disabled: boolean) {
   const user = await actorOrThrow()
   if (isDemoMode()) return demo.setUserDisabled(user.id, userId, disabled)

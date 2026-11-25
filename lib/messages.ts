@@ -31,6 +31,16 @@ export function accountInviteMessage(input: {
   ].join("\n")
 }
 
+/** Open invite: just a link; the invitee chooses their own name, email and password. */
+export function appInviteMessage(input: { inviter: string; url: string }): string {
+  return [
+    `${firstName(input.inviter)} invited you to Hissa, an app for splitting expenses with friends and flatmates 🏠`,
+    "",
+    "Create your account here:",
+    input.url,
+  ].join("\n")
+}
+
 export function groupJoinLink(appUrl: string, code: string) {
   return `${appUrl.replace(/\/$/, "")}/join/${code}`
 }

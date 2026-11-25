@@ -81,6 +81,21 @@ describe("demo ledger rules", () => {
     expect(settled?.lockDate).toBe("2026-11-15")
   })
 
+  it("lets a member share a single-use link that creates the account", async () => {
+    const db = await import("@/lib/demo/db")
+    const { path } = await db.createSignupLink(IDS.meera)
+    const token = path.split("/").pop() as string
+    expect((await db.previewSignupLink(token)).valid).toBe(true)
+    await expect(db.redeemSignupLink(token, { name: "A", email: "x", password: "short" })).rejects.toThrow()
+    const email = await db.redeemSignupLink(token, { name: "Riya Shah", email: "Riya@Hissa.app", password: "secret123" })
+    const user = await db.authenticate(email, "secret123")
+    expect(user.displayName).toBe("Riya Shah")
+    expect((await db.previewSignupLink(token)).valid).toBe(false)
+    await expect(
+      db.redeemSignupLink(token, { name: "Riya Shah", email: "riya2@hissa.app", password: "secret123" }),
+    ).rejects.toThrow(/invalid or already used/)
+  })
+
   it("expires invites and lets a new roommate join a live code", async () => {
     const db = await import("@/lib/demo/db")
     const expired = await db.previewInvite(null, "NOPE")
@@ -88,9 +103,9 @@ describe("demo ledger rules", () => {
 
     const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
     expect(aarav.isAdmin).toBe(true)
-    // Any active member can invite, not only admins.
-    const byMember = await db.createAccount(IDS.meera, { email: "nope@hissa.app", displayName: "Nope" })
-    expect(byMember.email).toBe("nope@hissa.app")
+    await expect(
+      db.createAccount(IDS.meera, { email: "nope@hissa.app", displayName: "Nope" }),
+    ).rejects.toThrow(/admin/)
 
     const created = await db.createAccount(aarav.id, {
       email: "kabir@hissa.app",

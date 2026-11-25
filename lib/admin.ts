@@ -34,6 +34,17 @@ export function inviteLimitReason(actor: AccessProfile, invitesSent: number): st
   return `You have reached the limit of ${MEMBER_INVITE_LIMIT} invites. Ask an admin for more.`
 }
 
+export const SIGNUP_LINK_DAYS = 7
+
+/** Why these sign-up details cannot be used, or null when they are fine. */
+export function signupInputReason(input: { name: string; email: string; password: string }): string | null {
+  const name = input.name.trim()
+  if (name.length < 2 || name.length > 40) return "Name must be 2–40 characters"
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) return "Enter a valid email"
+  if (input.password.length < 8) return "Use at least 8 characters"
+  return null
+}
+
 export function mutateUserBlockReason(actor: AccessProfile | null, targetId: string): string | null {
   const blocked = adminBlockReason(actor)
   if (blocked) return blocked

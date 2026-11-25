@@ -17,6 +17,16 @@ export type AppUser = {
   createdAt: string
 }
 
+export type SignupLink = {
+  path: string
+  expiresAt: string
+}
+
+export type SignupLinkPreview = {
+  valid: boolean
+  inviterName?: string
+}
+
 export type CreatedAccount = {
   id: string
   email: string

@@ -1,9 +1,9 @@
 import "server-only"
 
-import { adminBlockReason, generateSecret, inviteBlockReason, inviteLimitReason, mutateUserBlockReason } from "@/lib/admin"
+import { adminBlockReason, generateSecret, inviteBlockReason, inviteLimitReason, mutateUserBlockReason, SIGNUP_LINK_DAYS, signupInputReason } from "@/lib/admin"
 import { AppError } from "@/lib/errors"
 import { createServiceClient } from "@/lib/supabase/service"
-import type { AppUser, CreatedAccount, SessionUser } from "@/lib/types"
+import type { AppUser, CreatedAccount, SessionUser, SignupLink, SignupLinkPreview } from "@/lib/types"
 
 function assertActor(actor: SessionUser) {
   const blocked = adminBlockReason({ isAdmin: actor.isAdmin, disabled: false, invited: true })
@@ -32,8 +32,7 @@ export async function createAccount(
   actor: SessionUser,
   input: { email: string; displayName: string },
 ): Promise<CreatedAccount> {
-  const blocked = inviteBlockReason({ isAdmin: actor.isAdmin, disabled: false, invited: true })
-  if (blocked) throw new AppError(blocked)
+  assertActor(actor)
   const email = input.email.trim().toLowerCase()
   const displayName = input.displayName.trim()
   if (displayName.length < 2 || displayName.length > 40) {
@@ -42,15 +41,6 @@ export async function createAccount(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError("Enter a valid email")
   const temporaryPassword = generateSecret(12)
   const admin = createServiceClient()
-  if (!actor.isAdmin) {
-    const { count, error: countError } = await admin
-      .from("account_invites")
-      .select("id", { count: "exact", head: true })
-      .eq("invited_by", actor.id)
-    if (countError) throw new AppError(countError.message)
-    const limited = inviteLimitReason({ isAdmin: false, disabled: false, invited: true }, count ?? 0)
-    if (limited) throw new AppError(limited)
-  }
   const created = await admin.auth.admin.createUser({
     email,
     password: temporaryPassword,
@@ -69,7 +59,6 @@ export async function createAccount(
   const token = generateSecret(24)
   const { error: inviteError } = await admin.from("account_invites").insert({
     user_id: userId,
-    invited_by: actor.id,
     token,
     expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
   })
@@ -131,4 +120,76 @@ export async function redeemWelcome(token: string, password: string) {
   if (inviteError) throw new AppError(inviteError.message)
   const { data: profile } = await admin.from("profiles").select("email").eq("id", data.user_id).maybeSingle()
   return (profile?.email as string) ?? ""
+}
+
+export async function createSignupLink(actor: SessionUser): Promise<SignupLink> {
+  const blocked = inviteBlockReason({ isAdmin: actor.isAdmin, disabled: false, invited: true })
+  if (blocked) throw new AppError(blocked)
+  const admin = createServiceClient()
+  if (!actor.isAdmin) {
+    const { count, error } = await admin
+      .from("signup_links")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", actor.id)
+    if (error) throw new AppError(error.message)
+    const limited = inviteLimitReason({ isAdmin: false, disabled: false, invited: true }, count ?? 0)
+    if (limited) throw new AppError(limited)
+  }
+  const token = generateSecret(24)
+  const expiresAt = new Date(Date.now() + SIGNUP_LINK_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { error } = await admin.from("signup_links").insert({ token, created_by: actor.id, expires_at: expiresAt })
+  if (error) throw new AppError(error.message)
+  return { path: `/invite/${token}`, expiresAt }
+}
+
+export async function previewSignupLink(token: string): Promise<SignupLinkPreview> {
+  const admin = createServiceClient()
+  const { data } = await admin
+    .from("signup_links")
+    .select("expires_at, used_at, created_by")
+    .eq("token", token)
+    .maybeSingle()
+  if (!data || data.used_at || Date.parse(data.expires_at as string) <= Date.now()) return { valid: false }
+  const { data: inviter } = await admin.from("profiles").select("display_name").eq("id", data.created_by).maybeSingle()
+  return { valid: true, inviterName: (inviter?.display_name as string | undefined) ?? undefined }
+}
+
+/** Creates the account for a single-use link. Returns the email so the caller can sign them in. */
+export async function redeemSignupLink(token: string, input: { name: string; email: string; password: string }) {
+  const problem = signupInputReason(input)
+  if (problem) throw new AppError(problem)
+  const email = input.email.trim().toLowerCase()
+  const displayName = input.name.trim()
+  const admin = createServiceClient()
+  // Claim the link first so two people cannot use it at once.
+  const { data: claimed, error: claimError } = await admin
+    .from("signup_links")
+    .update({ used_at: new Date().toISOString() })
+    .eq("token", token)
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .select("id")
+    .maybeSingle()
+  if (claimError) throw new AppError(claimError.message)
+  if (!claimed) throw new AppError("This invite link is invalid or already used")
+  const release = () => admin.from("signup_links").update({ used_at: null }).eq("id", claimed.id)
+  const created = await admin.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { display_name: displayName },
+  })
+  if (created.error || !created.data.user) {
+    await release()
+    const message = created.error?.message ?? ""
+    throw new AppError(/already|registered|exists/i.test(message) ? "An account with that email already exists" : "Could not create your account")
+  }
+  const userId = created.data.user.id
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ invited: true, is_admin: false, disabled: false, display_name: displayName })
+    .eq("id", userId)
+  if (profileError) throw new AppError(profileError.message)
+  await admin.from("signup_links").update({ used_by: userId }).eq("id", claimed.id)
+  return email
 }

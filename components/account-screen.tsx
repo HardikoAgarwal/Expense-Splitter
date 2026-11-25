@@ -230,7 +230,7 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
 
       <EditNameDialog user={user} open={nameOpen} onOpenChange={setNameOpen} />
       <EditUpiDialog upiId={upiId} open={upiOpen} onOpenChange={setUpiOpen} />
-      <InviteFriendSheets open={inviteOpen} onOpenChange={setInviteOpen} />
+      <InviteFriendSheets open={inviteOpen} onOpenChange={setInviteOpen} inviterName={user.displayName} />
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
       <Dialog open={signOutOpen} onOpenChange={(open) => !signingOut.pending && setSignOutOpen(open)}>
         <DialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-[20px]">

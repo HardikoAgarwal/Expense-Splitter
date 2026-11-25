@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-const PUBLIC_PREFIXES = ["/offline.html", "/login", "/join", "/welcome", "/forgot-password", "/reset-password"]
+const PUBLIC_PREFIXES = ["/offline.html", "/login", "/join", "/invite", "/welcome", "/forgot-password", "/reset-password"]
 
 function isPublic(pathname: string) {
   return pathname === "/" || PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))

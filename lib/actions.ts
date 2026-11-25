@@ -54,6 +54,14 @@ export async function createAccountAction(input: { email: string; displayName: s
   return run(() => queries.createAccount(input))
 }
 
+export async function createSignupLinkAction() {
+  return run(() => queries.createSignupLink())
+}
+
+export async function signUpWithLinkAction(token: string, input: { name: string; email: string; password: string }) {
+  return run(() => queries.signUpWithLink(token, input))
+}
+
 export async function setUserDisabledAction(userId: string, disabled: boolean) {
   return run(() => queries.setUserDisabled(userId, disabled))
 }

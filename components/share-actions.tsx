@@ -53,6 +53,30 @@ export function ShareActions({ title, text }: { title: string; text: string }) {
   )
 }
 
+/** Small icon-only copy button for a short value such as an invite code. */
+export function CopyIconButton({ text, label, className }: { text: string; label: string; className?: string }) {
+  const { copied, copy } = useShare(label, text)
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      aria-label={copied ? "Copied" : label}
+      className={cn("inline-flex size-10 items-center justify-center rounded-full transition active:scale-95", className)}
+    >
+      {copied ? <CheckIcon className="size-5" /> : <CopyIcon className="size-5" />}
+    </button>
+  )
+}
+
+/** The share message as plain text with a quiet accent rule, no box. */
+export function PlainMessage({ text, className }: { text: string; className?: string }) {
+  return (
+    <p className={cn("border-l-2 border-primary/30 pl-4 text-[15px] leading-6 break-words whitespace-pre-line text-foreground/90", className)}>
+      {renderChatText(text)}
+    </p>
+  )
+}
+
 /** Renders a share message the way it will look in a chat, with a quick copy button. */
 export function MessagePreview({ title, text, className }: { title: string; text: string; className?: string }) {
   const { copied, copy } = useShare(title, text)

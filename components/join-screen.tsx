@@ -42,7 +42,7 @@ export function JoinScreen({
   }
 
   return (
-    <main className="flex min-h-dvh flex-col px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-8">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-8">
       <Mark className="size-12" />
       {!preview.valid ? (
         <>

@@ -27,7 +27,7 @@ export function WelcomeScreen({ token }: { token: string }) {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col px-5 pt-[max(2rem,env(safe-area-inset-top))]">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-[max(2rem,env(safe-area-inset-top))]">
       <Mark className="size-12" />
       <h1 className="mt-6 text-3xl font-semibold tracking-tight">Set your password</h1>
       <p className="mt-2 text-sm text-muted-foreground">Choose a password for this account.</p>

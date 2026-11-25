@@ -99,6 +99,8 @@ export type Expense = {
   locked: boolean
   /** Name of someone in this expense who has left the group; it can no longer be changed. */
   leftMember?: string | null
+  /** The person who added this expense has left the group. */
+  creatorLeft?: boolean
   disputed: boolean
   flags: ExpenseFlag[]
 }
@@ -135,6 +137,8 @@ export type Settlement = {
   createdBy: string
   createdAt: string
   resolvedAt: string | null
+  /** An admin forgave this amount when removing someone; no money moved. */
+  writeOff?: boolean
 }
 
 export type Balance = {

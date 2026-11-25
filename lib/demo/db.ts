@@ -311,6 +311,15 @@ function memberIds(db: DemoDb, groupId: string) {
   return db.members.filter((member) => member.groupId === groupId && !member.leftAt).map((member) => member.userId)
 }
 
+/** Whether a group admin may step in for an expense whose creator has left. */
+function expenseAccess(db: DemoDb, expense: { groupId: string; createdBy: string }, userId: string) {
+  const role = db.members.find((member) => member.groupId === expense.groupId && member.userId === userId && !member.leftAt)?.role
+  return {
+    creatorLeft: !memberIds(db, expense.groupId).includes(expense.createdBy),
+    isGroupAdmin: role === "admin",
+  }
+}
+
 /** Name of the first person in this expense who has left the group, if any. */
 function leftMemberIn(db: DemoDb, expense: { groupId: string; payerId: string; shares: { userId: string; sharePaise: number }[] }) {
   const active = new Set(memberIds(db, expense.groupId))
@@ -353,6 +362,7 @@ function ledgerSettlements(rows: Settlement[]): LedgerSettlement[] {
     upToDate: settlement.upToDate,
     resolvedAt: settlement.resolvedAt,
     createdAt: settlement.createdAt,
+    writeOff: settlement.writeOff,
   }))
 }
 
@@ -387,6 +397,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
         shares: expense.shares.filter((share) => share.sharePaise > 0),
         locked: isExpenseLocked(expense.expenseDate, lockedThrough, expense.createdAt, lockTime),
         leftMember: leftMemberIn(db, expense),
+        creatorLeft: !memberIds(db, groupId).includes(expense.createdBy),
         disputed: flags.length > 0,
         flags,
       }
@@ -680,7 +691,7 @@ export async function deleteGroup(userId: string, groupId: string) {
   })
 }
 
-function exitBlock(db: DemoDb, groupId: string, userId: string, self: boolean): string | null {
+function exitBlock(db: DemoDb, groupId: string, userId: string, self: boolean, ignoreMoney = false): string | null {
   const active = db.members.filter((member) => member.groupId === groupId && !member.leftAt)
   const target = active.find((member) => member.userId === userId)
   if (!target) return "That person is not in the group"
@@ -690,6 +701,7 @@ function exitBlock(db: DemoDb, groupId: string, userId: string, self: boolean): 
     role: target.role,
     adminCount: active.filter((member) => member.role === "admin").length,
     memberCount: active.length,
+    ignoreMoney,
     netPaise: detail?.myNetPaise ?? 0,
     pendingCount: db.settlements.filter(
       (settlement) =>
@@ -705,11 +717,38 @@ function markLeft(db: DemoDb, groupId: string, userId: string) {
   if (row) row.leftAt = new Date().toISOString()
 }
 
-export async function removeMember(actorId: string, groupId: string, userId: string) {
+export async function removeMember(actorId: string, groupId: string, userId: string, writeOff = false) {
   return withDb(async (db) => {
     assertGroupAdmin(db, groupId, actorId)
-    const blocked = exitBlock(db, groupId, userId, actorId === userId)
+    if (writeOff && actorId === userId) throw new AppError("You cannot write off your own balance")
+    const blocked = exitBlock(db, groupId, userId, actorId === userId, writeOff)
     if (blocked) throw new AppError(blocked)
+    if (writeOff) {
+      // Cancel payments that would never be confirmed, then forgive exactly what the
+      // leaver owed or was owed, so every other net balance stays exact.
+      const detail = presentGroup(db, groupId, userId)
+      db.settlements = db.settlements.filter(
+        (item) =>
+          !(item.groupId === groupId && item.status === "pending" && (item.fromUserId === userId || item.toUserId === userId)),
+      )
+      const now = new Date().toISOString()
+      for (const debt of detail?.debts ?? []) {
+        if (debt.fromUserId !== userId && debt.toUserId !== userId) continue
+        db.settlements.push({
+          id: randomUUID(),
+          groupId,
+          fromUserId: debt.fromUserId,
+          toUserId: debt.toUserId,
+          amountPaise: debt.amountPaise,
+          upToDate: todayISO(),
+          status: "approved",
+          createdBy: actorId,
+          createdAt: now,
+          resolvedAt: now,
+          writeOff: true,
+        })
+      }
+    }
     markLeft(db, groupId, userId)
     await persist(db)
   })
@@ -872,7 +911,7 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
 
     const existing = db.expenses.find((expense) => expense.id === input.id)
     if (!existing || existing.groupId !== input.groupId) throw new AppError("Expense not found")
-    if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
+    if (!canModifyExpense(existing, userId, expenseAccess(db, existing, userId))) throw new AppError(ONLY_CREATOR_MESSAGE)
     const gone = leftMemberIn(db, existing)
     if (gone) throw new AppError(`${gone} left the group, so this expense can no longer be changed`)
     if (isExpenseLocked(existing.expenseDate, lockedThrough, existing.createdAt, lockTime)) {
@@ -961,7 +1000,7 @@ export async function deleteExpense(userId: string, expenseId: string) {
     const existing = db.expenses.find((expense) => expense.id === expenseId)
     if (!existing) throw new AppError("Expense not found")
     assertMember(db, existing.groupId, userId)
-    if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
+    if (!canModifyExpense(existing, userId, expenseAccess(db, existing, userId))) throw new AppError(ONLY_CREATOR_MESSAGE)
     const gone = leftMemberIn(db, existing)
     if (gone) throw new AppError(`${gone} left the group, so this expense can no longer be changed`)
     const ledger = ledgerSettlements(db.settlements.filter((settlement) => settlement.groupId === existing.groupId))
@@ -1236,13 +1275,16 @@ export function buildActivity(
         createdAt: settlement.createdAt,
         actorId: settlement.fromUserId,
         actorName: nameOf(settlement.fromUserId),
-        title:
-          settlement.status === "pending"
+        title: settlement.writeOff
+          ? "Balance written off"
+          : settlement.status === "pending"
             ? `${nameOf(settlement.fromUserId)} recorded a payment`
             : settlement.status === "approved"
               ? "Payment confirmed"
               : "Payment declined",
-        subtitle: `${nameOf(settlement.fromUserId)} to ${nameOf(settlement.toUserId)} · ${group.name}`,
+        subtitle: settlement.writeOff
+          ? `${nameOf(settlement.fromUserId)} owed ${nameOf(settlement.toUserId)} · ${group.name}`
+          : `${nameOf(settlement.fromUserId)} to ${nameOf(settlement.toUserId)} · ${group.name}`,
         amountPaise: settlement.amountPaise,
         status: settlement.status,
         settlementId: settlement.id,

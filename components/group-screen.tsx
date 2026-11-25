@@ -29,6 +29,7 @@ import {
 import { categoryLabel } from "@/lib/categories"
 import { disputeChip, disputeNeedsMe } from "@/lib/disputes"
 import { EMPTY_FILTERS, filterExpenses, type ExpenseFilters } from "@/lib/expense-filters"
+import { canModifyExpense } from "@/lib/expense-access"
 import { memberNameIn } from "@/lib/members"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
@@ -52,7 +53,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     if (!linked) return
     router.replace(`/groups/${group.id}`, { scroll: false })
     const target = editId ? group.expenses.find((expense) => expense.id === editId) : null
-    if (target && target.createdBy === user.id && !target.locked && !target.leftMember) openExpense(group.id, target)
+    if (target && canModifyExpense(target, user.id, { creatorLeft: target.creatorLeft, isGroupAdmin: group.myRole === "admin" }) && !target.locked && !target.leftMember) openExpense(group.id, target)
   }, [linked, editId, group, user.id, router, openExpense])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)

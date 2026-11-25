@@ -207,6 +207,64 @@ describe("demo ledger rules", () => {
     expect(back?.members.map((member) => member.displayName)).toContain("Meera Shah")
   })
 
+  it("lets an admin remove someone with a balance by writing it off, and edit what they added", async () => {
+    const db = await import("@/lib/demo/db")
+    const { todayISO } = await import("@/lib/money")
+    const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
+    const meera = await db.authenticate("meera@hissa.app", "demo1234")
+
+    // An expense Meera adds that only involves Aarav, so it outlives her.
+    const orphanId = await db.saveExpense(meera.id, {
+      groupId: IDS.flat,
+      description: "Gas refill",
+      amountPaise: 5000,
+      payerId: aarav.id,
+      expenseDate: todayISO(),
+      category: "utilities",
+      shares: [{ userId: IDS.aarav, sharePaise: 5000 }],
+    })
+
+    const before = await db.getGroup(aarav.id, IDS.flat)
+    const owed = -(before?.balances.find((b) => b.userId === IDS.meera)?.netPaise ?? 0)
+    expect(owed).toBeGreaterThan(0)
+    const aaravBefore = before?.myNetPaise ?? 0
+    const lockBefore = before?.lockDate
+
+    // Members cannot write off, and nobody writes off their own balance.
+    await expect(db.removeMember(meera.id, IDS.flat, aarav.id, true)).rejects.toThrow(/admin/)
+    await expect(db.removeMember(aarav.id, IDS.flat, aarav.id, true)).rejects.toThrow()
+    // Without the write-off flag the balance still blocks removal.
+    await expect(db.removeMember(aarav.id, IDS.flat, meera.id)).rejects.toThrow(/still owe/)
+
+    await db.removeMember(aarav.id, IDS.flat, meera.id, true)
+    const after = await db.getGroup(aarav.id, IDS.flat)
+
+    // Aarav is the only one owed, so he absorbs exactly what Meera owed; nothing else moves.
+    expect(after?.myNetPaise).toBe(aaravBefore - owed)
+    expect(after?.myNetPaise).toBe(0)
+    expect(after?.lockDate).toBe(lockBefore)
+    const writeOffs = after?.settlements.filter((item) => item.writeOff) ?? []
+    expect(writeOffs).toHaveLength(1)
+    expect(writeOffs[0]).toMatchObject({ fromUserId: IDS.meera, toUserId: IDS.aarav, amountPaise: owed, status: "approved" })
+    expect(after?.settlements.some((item) => item.status === "pending")).toBe(false)
+
+    // Meera added the gas expense and is gone, so a group admin may now change it.
+    const orphan = after?.expenses.find((expense) => expense.id === orphanId)
+    expect(orphan?.creatorLeft).toBe(true)
+    expect(orphan?.leftMember).toBeNull()
+    await db.saveExpense(aarav.id, {
+      groupId: IDS.flat,
+      id: orphanId,
+      description: "Gas refill (fixed)",
+      amountPaise: 5000,
+      payerId: aarav.id,
+      expenseDate: todayISO(),
+      category: "utilities",
+      shares: [{ userId: IDS.aarav, sharePaise: 5000 }],
+    })
+    await db.deleteExpense(aarav.id, orphanId)
+  })
+
   it("creates an account from a group invite and puts them in the group", async () => {
     const db = await import("@/lib/demo/db")
     const email = await db.createInvitedUser({ name: "Tara Nair", email: "tara@hissa.app", password: "secret123" })

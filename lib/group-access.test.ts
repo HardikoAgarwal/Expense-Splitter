@@ -57,4 +57,11 @@ describe("memberExitBlockReason", () => {
     expect(memberExitBlockReason({ ...base, role: "admin", adminCount: 2 })).toBeNull()
     expect(memberExitBlockReason({ ...base, memberCount: 1 })).toMatch(/Delete the group/)
   })
+
+  it("skips the money checks for a write-off removal but not the admin rules", () => {
+    const owing = { ...base, self: false, netPaise: -50000, pendingCount: 1 }
+    expect(memberExitBlockReason(owing)).toMatch(/still owe/)
+    expect(memberExitBlockReason({ ...owing, ignoreMoney: true })).toBeNull()
+    expect(memberExitBlockReason({ ...owing, ignoreMoney: true, role: "admin" })).toMatch(/at least one admin/)
+  })
 })

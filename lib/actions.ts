@@ -123,8 +123,8 @@ export async function deleteGroupAction(groupId: string) {
   return run(() => queries.deleteGroup(groupId))
 }
 
-export async function removeMemberAction(groupId: string, userId: string) {
-  return run(() => queries.removeMember(groupId, userId))
+export async function removeMemberAction(groupId: string, userId: string, writeOff = false) {
+  return run(() => queries.removeMember(groupId, userId, writeOff))
 }
 
 export async function leaveGroupAction(groupId: string) {

@@ -352,9 +352,12 @@ export function SettleScreen({
                   <div key={item.id} className="flex items-start justify-between gap-3 py-3.5">
                     <div className="min-w-0">
                       <p className="text-sm font-medium">
-                        {item.fromUserId === user.id ? "You" : from} paid {item.toUserId === user.id ? "you" : to}
+                        {item.fromUserId === user.id ? "You" : from} {item.writeOff ? "owed" : "paid"}{" "}
+                        {item.toUserId === user.id ? "you" : to}
                       </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">Through {formatDay(item.upToDate)}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {item.writeOff ? `Written off on ${formatDay(item.upToDate)}` : `Through ${formatDay(item.upToDate)}`}
+                      </p>
                       {mine ? (
                         <button
                           type="button"
@@ -374,7 +377,13 @@ export function SettleScreen({
                           item.status === "approved" ? "text-positive" : item.status === "rejected" ? "text-negative" : "text-warning",
                         )}
                       >
-                        {item.status === "pending" ? "Waiting for approval" : item.status === "approved" ? "Approved" : "Declined"}
+                        {item.writeOff
+                          ? "Written off"
+                          : item.status === "pending"
+                            ? "Waiting for approval"
+                            : item.status === "approved"
+                              ? "Approved"
+                              : "Declined"}
                       </p>
                     </div>
                   </div>

@@ -176,10 +176,10 @@ export async function deleteGroup(groupId: string) {
   return demo.deleteGroup(user.id, groupId)
 }
 
-export async function removeMember(groupId: string, userId: string) {
+export async function removeMember(groupId: string, userId: string, writeOff = false) {
   const user = await actorOrThrow()
-  if (!isDemoMode()) return remote.removeMember(groupId, userId)
-  return demo.removeMember(user.id, groupId, userId)
+  if (!isDemoMode()) return remote.removeMember(groupId, userId, writeOff)
+  return demo.removeMember(user.id, groupId, userId, writeOff)
 }
 
 export async function leaveGroup(groupId: string) {

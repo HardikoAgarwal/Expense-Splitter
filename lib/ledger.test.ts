@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { formatINR, rupeesToPaise } from "@/lib/money"
 import {
   computeBalances,
+  lockDate,
   pairwiseIOwe,
   simplifyDebts,
   splitEqually,
@@ -290,3 +291,19 @@ describe("subset splits", () => {
 function net(balances: { userId: string; netPaise: number }[], userId: string) {
   return balances.find((balance) => balance.userId === userId)?.netPaise
 }
+
+describe("write-offs", () => {
+  it("count toward balances but never lock dates", () => {
+    const settlements = [
+      { fromUserId: "m", toUserId: "a", amountPaise: 500, status: "approved" as const, upToDate: "2026-11-20", writeOff: true },
+    ]
+    expect(lockDate(settlements)).toBeNull()
+    const [a, m] = computeBalances(
+      ["a", "m"],
+      [{ payerId: "a", expenseDate: "2026-11-01", amountPaise: 1000, shares: [{ userId: "a", sharePaise: 500 }, { userId: "m", sharePaise: 500 }] }],
+      settlements,
+    )
+    expect(a.netPaise).toBe(0)
+    expect(m.netPaise).toBe(0)
+  })
+})

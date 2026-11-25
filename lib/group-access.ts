@@ -46,11 +46,14 @@ export function memberExitBlockReason(input: {
   memberCount: number
   netPaise: number
   pendingCount: number
+  /** Skip the money checks (used when an admin writes the balance off). */
+  ignoreMoney?: boolean
 }): string | null {
   if (input.memberCount <= 1) return "You are the only person here. Delete the group instead."
   if (normalizeGroupRole(input.role) === "admin" && input.adminCount <= 1) {
     return input.self ? "Make someone else an admin before you leave." : "A group needs at least one admin"
   }
+  if (input.ignoreMoney) return null
   if (input.netPaise !== 0) {
     const amount = formatINR(Math.abs(input.netPaise))
     if (input.self) {

@@ -112,6 +112,7 @@ export type LedgerSettlement = {
   upToDate: string
   resolvedAt?: string | null
   createdAt?: string
+  writeOff?: boolean
 }
 
 export type MemberBalance = {
@@ -214,7 +215,7 @@ export function pairwiseIOwe(input: {
 
 export function lockDate(settlements: LedgerSettlement[]): string | null {
   const dates = settlements
-    .filter((settlement) => settlement.status === "approved")
+    .filter((settlement) => settlement.status === "approved" && !settlement.writeOff)
     .map((settlement) => settlement.upToDate)
     .sort()
   return dates.length ? dates[dates.length - 1] : null
@@ -225,7 +226,7 @@ export function lockedAt(settlements: LedgerSettlement[]): string | null {
   const through = lockDate(settlements)
   if (!through) return null
   const times = settlements
-    .filter((s) => s.status === "approved" && s.upToDate === through)
+    .filter((s) => s.status === "approved" && !s.writeOff && s.upToDate === through)
     .map((s) => s.resolvedAt ?? s.createdAt ?? null)
     .filter((t): t is string => Boolean(t))
     .sort()

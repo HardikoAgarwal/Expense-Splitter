@@ -48,7 +48,10 @@ export function ExpenseDetail({
   const mine = expense?.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0
   const myFlag = expense?.flags.find((flag) => flag.userId === user.id) ?? null
   const canFlag = mine > 0 && !myFlag && expense?.createdBy !== user.id
-  const canModify = canModifyExpense(expense, user.id)
+  const canModify = canModifyExpense(expense, user.id, {
+    creatorLeft: expense?.creatorLeft,
+    isGroupAdmin: group.myRole === "admin",
+  })
   const fullName = (id: string) => memberNameIn(group, id, "Former member")
   const nameOf = (id: string) => (id === user.id ? "You" : fullName(id))
   const participants = (expense?.shares ?? []).filter((share) => share.sharePaise > 0)
@@ -125,7 +128,9 @@ export function ExpenseDetail({
                 <p className="money text-[1.9rem] leading-tight">{formatINR(expense.amountPaise)}</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   Paid by {nameOf(expense.payerId)} · {formatDay(expense.expenseDate)} · {categoryLabel(expense.category)}
-                  {expense.createdBy !== expense.payerId ? ` · Added by ${nameOf(expense.createdBy)}` : ""}
+                  {expense.createdBy !== expense.payerId || expense.creatorLeft
+                    ? ` · Added by ${nameOf(expense.createdBy)}${expense.creatorLeft ? " (left the group)" : ""}`
+                    : ""}
                 </p>
               </div>
             </div>

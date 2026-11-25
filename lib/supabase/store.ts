@@ -418,6 +418,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
         updatedAt: row.updated_at as string,
         shares,
         locked: isExpenseLocked(expenseDate, lockedThrough, row.created_at as string, lockTime),
+        creatorLeft: !activeIds.has(row.created_by as string),
         leftMember: (() => {
           const gone = [row.payer_id as string, ...shares.map((share) => share.userId)].find((id) => !activeIds.has(id))
           return gone ? nameOf(gone) : null
@@ -492,8 +493,8 @@ export async function deleteGroup(groupId: string) {
   await rpcVoid("delete_group", { p_group_id: groupId })
 }
 
-export async function removeMember(groupId: string, userId: string) {
-  await rpcVoid("remove_group_member", { p_group_id: groupId, p_user_id: userId })
+export async function removeMember(groupId: string, userId: string, writeOff = false) {
+  await rpcVoid("remove_group_member", { p_group_id: groupId, p_user_id: userId, p_write_off: writeOff })
 }
 
 export async function leaveGroup(groupId: string) {
@@ -527,6 +528,7 @@ function toSettlement(row: {
   created_by: string
   created_at: string
   resolved_at: string | null
+  write_off?: boolean | null
 }): Settlement {
   return {
     id: row.id,
@@ -539,6 +541,7 @@ function toSettlement(row: {
     createdBy: row.created_by,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
+    writeOff: Boolean(row.write_off),
   }
 }
 
@@ -614,7 +617,21 @@ export const expenseSnapshot = cache(async (expenseId: string): Promise<ExpenseS
 async function assertExpenseCreator(expenseId: string) {
   const [user, snapshot] = await Promise.all([requireUser(), expenseSnapshot(expenseId)])
   if (!snapshot) throw new AppError("Expense not found")
-  if (!canModifyExpense(snapshot, user.id)) throw new AppError(ONLY_CREATOR_MESSAGE)
+  if (snapshot.createdBy === user.id) return
+  // Someone else added it: only a group admin may step in, and only if the creator has left.
+  const supabase = await client()
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("user_id, role, left_at")
+    .eq("group_id", snapshot.groupId)
+    .in("user_id", [user.id, snapshot.createdBy])
+  fail(error)
+  const rows = data ?? []
+  const context = {
+    creatorLeft: !rows.some((row) => row.user_id === snapshot.createdBy && !row.left_at),
+    isGroupAdmin: rows.some((row) => row.user_id === user.id && !row.left_at && row.role === "admin"),
+  }
+  if (!canModifyExpense(snapshot, user.id, context)) throw new AppError(ONLY_CREATOR_MESSAGE)
 }
 
 export async function saveExpense(input: SaveExpenseInput) {
@@ -875,13 +892,16 @@ export async function getActivity() {
       createdAt: settlement.createdAt,
       actorId: settlement.fromUserId,
       actorName: nameOf(settlement.fromUserId),
-      title:
-        settlement.status === "pending"
+      title: settlement.writeOff
+        ? "Balance written off"
+        : settlement.status === "pending"
           ? `${nameOf(settlement.fromUserId)} recorded a payment`
           : settlement.status === "approved"
             ? "Payment confirmed"
             : "Payment declined",
-      subtitle: `${nameOf(settlement.fromUserId)} to ${nameOf(settlement.toUserId)} · ${group?.name ?? "Group"}`,
+      subtitle: settlement.writeOff
+        ? `${nameOf(settlement.fromUserId)} owed ${nameOf(settlement.toUserId)} · ${group?.name ?? "Group"}`
+        : `${nameOf(settlement.fromUserId)} to ${nameOf(settlement.toUserId)} · ${group?.name ?? "Group"}`,
       amountPaise: settlement.amountPaise,
       status: settlement.status,
       settlementId: settlement.id,

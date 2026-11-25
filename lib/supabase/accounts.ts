@@ -1,6 +1,6 @@
 import "server-only"
 
-import { adminBlockReason, generateSecret, mutateUserBlockReason } from "@/lib/admin"
+import { adminBlockReason, generateSecret, inviteBlockReason, inviteLimitReason, mutateUserBlockReason } from "@/lib/admin"
 import { AppError } from "@/lib/errors"
 import { createServiceClient } from "@/lib/supabase/service"
 import type { AppUser, CreatedAccount, SessionUser } from "@/lib/types"
@@ -32,7 +32,8 @@ export async function createAccount(
   actor: SessionUser,
   input: { email: string; displayName: string },
 ): Promise<CreatedAccount> {
-  assertActor(actor)
+  const blocked = inviteBlockReason({ isAdmin: actor.isAdmin, disabled: false, invited: true })
+  if (blocked) throw new AppError(blocked)
   const email = input.email.trim().toLowerCase()
   const displayName = input.displayName.trim()
   if (displayName.length < 2 || displayName.length > 40) {
@@ -41,6 +42,15 @@ export async function createAccount(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AppError("Enter a valid email")
   const temporaryPassword = generateSecret(12)
   const admin = createServiceClient()
+  if (!actor.isAdmin) {
+    const { count, error: countError } = await admin
+      .from("account_invites")
+      .select("id", { count: "exact", head: true })
+      .eq("invited_by", actor.id)
+    if (countError) throw new AppError(countError.message)
+    const limited = inviteLimitReason({ isAdmin: false, disabled: false, invited: true }, count ?? 0)
+    if (limited) throw new AppError(limited)
+  }
   const created = await admin.auth.admin.createUser({
     email,
     password: temporaryPassword,
@@ -59,6 +69,7 @@ export async function createAccount(
   const token = generateSecret(24)
   const { error: inviteError } = await admin.from("account_invites").insert({
     user_id: userId,
+    invited_by: actor.id,
     token,
     expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
   })

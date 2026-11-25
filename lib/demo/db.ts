@@ -42,7 +42,14 @@ import type {
   SessionUser,
   Settlement,
 } from "@/lib/types"
-import { adminBlockReason, generateSecret, mutateUserBlockReason, signInBlockReason } from "@/lib/admin"
+import {
+  adminBlockReason,
+  generateSecret,
+  inviteBlockReason,
+  inviteLimitReason,
+  mutateUserBlockReason,
+  signInBlockReason,
+} from "@/lib/admin"
 import { groupAdminBlockReason, promoteMemberBlockReason, removeMemberBlockReason } from "@/lib/group-access"
 import { hashPassword, verifyPassword } from "@/lib/demo/password"
 import { DEMO_INVITES, IDS, seedExpenses } from "@/lib/demo/seed-data"
@@ -73,6 +80,7 @@ type DemoUser = {
 type AccountInvite = {
   id: string
   userId: string
+  invitedBy?: string
   token: string
   expiresAt: string
   usedAt: string | null
@@ -451,7 +459,12 @@ export async function createAccount(
   input: { email: string; displayName: string },
 ): Promise<CreatedAccount> {
   return withDb(async (db) => {
-    requireAdmin(db, actorId)
+    const actor = requireUser(db, actorId)
+    const blocked = inviteBlockReason(accessOf(actor))
+    if (blocked) throw new AppError(blocked)
+    const sent = db.accountInvites.filter((invite) => invite.invitedBy === actorId).length
+    const limited = inviteLimitReason(accessOf(actor), sent)
+    if (limited) throw new AppError(limited)
     const email = input.email.trim().toLowerCase()
     const displayName = input.displayName.trim()
     if (displayName.length < 2 || displayName.length > 40) {
@@ -479,6 +492,7 @@ export async function createAccount(
     db.accountInvites.push({
       id: randomUUID(),
       userId: user.id,
+      invitedBy: actorId,
       token,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       usedAt: null,

@@ -15,6 +15,7 @@ import {
   ShieldCheckIcon,
   SunIcon,
   WalletIcon,
+  UserPlusIcon,
   UserRoundIcon,
 } from "lucide-react"
 
@@ -37,6 +38,7 @@ import { FIELD, FIELD_LABEL, FIELDS, SectionTitle } from "@/components/field"
 import { signOutAction, updateNameAction, updatePasswordAction, updateUpiAction } from "@/lib/actions"
 import type { AppUser, SessionUser } from "@/lib/types"
 import { normalizeUpi, upiError } from "@/lib/upi"
+import { InviteFriendSheets } from "@/components/invite-friend"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
@@ -149,6 +151,7 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
   const [nameOpen, setNameOpen] = useState(false)
   const [upiOpen, setUpiOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const signingOut = useAction()
 
   const [signOutOpen, setSignOutOpen] = useState(false)
@@ -180,6 +183,16 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
           <PushToggle publicKey={pushKey} />
         </SettingsGroup>
       )}
+
+      <SettingsGroup title="Invite">
+        <SettingsRow
+          icon={<UserPlusIcon />}
+          label="Invite someone to Hissa"
+          value="Let a friend or roommate sign up"
+          onClick={() => setInviteOpen(true)}
+          actionIcon={<ChevronRightIcon />}
+        />
+      </SettingsGroup>
 
       <SettingsGroup title="Security">
         <SettingsRow
@@ -217,6 +230,7 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
 
       <EditNameDialog user={user} open={nameOpen} onOpenChange={setNameOpen} />
       <EditUpiDialog upiId={upiId} open={upiOpen} onOpenChange={setUpiOpen} />
+      <InviteFriendSheets open={inviteOpen} onOpenChange={setInviteOpen} />
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
       <Dialog open={signOutOpen} onOpenChange={(open) => !signingOut.pending && setSignOutOpen(open)}>
         <DialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-[20px]">

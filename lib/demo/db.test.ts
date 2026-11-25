@@ -88,9 +88,9 @@ describe("demo ledger rules", () => {
 
     const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
     expect(aarav.isAdmin).toBe(true)
-    await expect(
-      db.createAccount(IDS.meera, { email: "nope@hissa.app", displayName: "Nope" }),
-    ).rejects.toThrow(/admin/)
+    // Any active member can invite, not only admins.
+    const byMember = await db.createAccount(IDS.meera, { email: "nope@hissa.app", displayName: "Nope" })
+    expect(byMember.email).toBe("nope@hissa.app")
 
     const created = await db.createAccount(aarav.id, {
       email: "kabir@hissa.app",

@@ -21,6 +21,19 @@ export function adminBlockReason(actor: AccessProfile | null): string | null {
   return null
 }
 
+/** Members can invite people to the app; admins and members alike, as long as the account is active. */
+export const MEMBER_INVITE_LIMIT = 20
+
+export function inviteBlockReason(actor: AccessProfile | null): string | null {
+  if (!actor || actor.disabled || (!actor.invited && !actor.isAdmin)) return "You cannot invite people right now"
+  return null
+}
+
+export function inviteLimitReason(actor: AccessProfile, invitesSent: number): string | null {
+  if (actor.isAdmin || invitesSent < MEMBER_INVITE_LIMIT) return null
+  return `You have reached the limit of ${MEMBER_INVITE_LIMIT} invites. Ask an admin for more.`
+}
+
 export function mutateUserBlockReason(actor: AccessProfile | null, targetId: string): string | null {
   const blocked = adminBlockReason(actor)
   if (blocked) return blocked

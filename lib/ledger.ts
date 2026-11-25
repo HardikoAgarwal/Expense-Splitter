@@ -110,6 +110,8 @@ export type LedgerSettlement = {
   amountPaise: number
   status: "pending" | "approved" | "rejected"
   upToDate: string
+  resolvedAt?: string | null
+  createdAt?: string
 }
 
 export type MemberBalance = {
@@ -218,6 +220,31 @@ export function lockDate(settlements: LedgerSettlement[]): string | null {
   return dates.length ? dates[dates.length - 1] : null
 }
 
-export function isExpenseLocked(expenseDate: string, lockedThrough: string | null): boolean {
-  return lockedThrough !== null && expenseDate <= lockedThrough
+/** When the latest settlement date was locked (approval time), if known. */
+export function lockedAt(settlements: LedgerSettlement[]): string | null {
+  const through = lockDate(settlements)
+  if (!through) return null
+  const times = settlements
+    .filter((s) => s.status === "approved" && s.upToDate === through)
+    .map((s) => s.resolvedAt ?? s.createdAt ?? null)
+    .filter((t): t is string => Boolean(t))
+    .sort()
+  return times.length ? times[times.length - 1] : null
+}
+
+/**
+ * Days before the settled date are locked. On the settled date itself only expenses
+ * created before the settlement was approved are locked, so new ones can still be added.
+ */
+export function isExpenseLocked(
+  expenseDate: string,
+  lockedThrough: string | null,
+  createdAt?: string,
+  lockTime?: string | null,
+): boolean {
+  if (lockedThrough === null) return false
+  if (expenseDate < lockedThrough) return true
+  if (expenseDate > lockedThrough) return false
+  if (!createdAt || !lockTime) return true
+  return createdAt <= lockTime
 }

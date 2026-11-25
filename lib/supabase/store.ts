@@ -17,7 +17,7 @@ import {
 import { AppError } from "@/lib/errors"
 import { canModifyExpense, ONLY_CREATOR_MESSAGE } from "@/lib/expense-access"
 import type { ExpenseSnapshot } from "@/lib/expense-changes"
-import { isExpenseLocked, lockDate, type LedgerSettlement } from "@/lib/ledger"
+import { isExpenseLocked, lockDate, lockedAt, type LedgerSettlement } from "@/lib/ledger"
 import { createClient } from "@/lib/supabase/server"
 import { isValidUpi, normalizeUpi } from "@/lib/upi"
 import type {
@@ -385,6 +385,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
 
   const settlements: Settlement[] = (settlementRows ?? []).map(toSettlement)
   const lockedThrough = lockDate(settlements as LedgerSettlement[])
+  const lockTime = lockedAt(settlements as LedgerSettlement[])
   const expenses: Expense[] = (expenseRows ?? [])
     .map((row) => {
       const shares = (row.expense_shares ?? [])
@@ -407,7 +408,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
         createdAt: row.created_at as string,
         updatedAt: row.updated_at as string,
         shares,
-        locked: isExpenseLocked(expenseDate, lockedThrough),
+        locked: isExpenseLocked(expenseDate, lockedThrough, row.created_at as string, lockTime),
         disputed: flags.length > 0,
         flags,
       }

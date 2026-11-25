@@ -14,10 +14,12 @@ import {
   resolveFlagBlockReason,
   stillWrongBlockReason,
 } from "@/lib/disputes"
+import { todayISO } from "@/lib/money"
 import {
   computeBalances,
   isExpenseLocked,
   lockDate,
+  lockedAt,
   pairwiseIOwe,
   payableShares,
   simplifyDebts,
@@ -306,6 +308,12 @@ function membersOf(db: DemoDb, groupId: string): Member[] {
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
+function tomorrowISO(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return todayISO(d)
+}
+
 function ledgerSettlements(rows: Settlement[]): LedgerSettlement[] {
   return rows.map((settlement) => ({
     fromUserId: settlement.fromUserId,
@@ -313,6 +321,8 @@ function ledgerSettlements(rows: Settlement[]): LedgerSettlement[] {
     amountPaise: settlement.amountPaise,
     status: settlement.status,
     upToDate: settlement.upToDate,
+    resolvedAt: settlement.resolvedAt,
+    createdAt: settlement.createdAt,
   }))
 }
 
@@ -323,7 +333,9 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
   const settlements = db.settlements
     .filter((settlement) => settlement.groupId === groupId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  const lockedThrough = lockDate(ledgerSettlements(settlements))
+  const ledger = ledgerSettlements(settlements)
+  const lockedThrough = lockDate(ledger)
+  const lockTime = lockedAt(ledger)
   const expenses: Expense[] = db.expenses
     .filter((expense) => expense.groupId === groupId)
     .map((expense) => {
@@ -342,7 +354,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
       return {
         ...expense,
         shares: expense.shares.filter((share) => share.sharePaise > 0),
-        locked: isExpenseLocked(expense.expenseDate, lockedThrough),
+        locked: isExpenseLocked(expense.expenseDate, lockedThrough, expense.createdAt, lockTime),
         disputed: flags.length > 0,
         flags,
       }
@@ -760,8 +772,12 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
     if (problem) throw new AppError(problem)
 
     const settlements = db.settlements.filter((settlement) => settlement.groupId === input.groupId)
-    const lockedThrough = lockDate(ledgerSettlements(settlements))
-    if (isExpenseLocked(input.expenseDate, lockedThrough)) {
+    const ledger = ledgerSettlements(settlements)
+    const lockedThrough = lockDate(ledger)
+    const lockTime = lockedAt(ledger)
+    if (input.expenseDate > tomorrowISO()) throw new AppError("Expenses cannot be dated in the future")
+    // A brand-new row counts as created after any settlement, so only earlier days are locked.
+    if (isExpenseLocked(input.expenseDate, lockedThrough, new Date().toISOString(), lockTime)) {
       throw new AppError("That date is locked by an approved settlement")
     }
 
@@ -789,7 +805,7 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
     const existing = db.expenses.find((expense) => expense.id === input.id)
     if (!existing || existing.groupId !== input.groupId) throw new AppError("Expense not found")
     if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
-    if (isExpenseLocked(existing.expenseDate, lockedThrough)) {
+    if (isExpenseLocked(existing.expenseDate, lockedThrough, existing.createdAt, lockTime)) {
       throw new AppError("This expense is locked by an approved settlement")
     }
     const previous = new Set(existing.shares.filter((share) => share.sharePaise > 0).map((share) => share.userId))
@@ -876,10 +892,8 @@ export async function deleteExpense(userId: string, expenseId: string) {
     if (!existing) throw new AppError("Expense not found")
     assertMember(db, existing.groupId, userId)
     if (!canModifyExpense(existing, userId)) throw new AppError(ONLY_CREATOR_MESSAGE)
-    const lockedThrough = lockDate(
-      ledgerSettlements(db.settlements.filter((settlement) => settlement.groupId === existing.groupId)),
-    )
-    if (isExpenseLocked(existing.expenseDate, lockedThrough)) {
+    const ledger = ledgerSettlements(db.settlements.filter((settlement) => settlement.groupId === existing.groupId))
+    if (isExpenseLocked(existing.expenseDate, lockDate(ledger), existing.createdAt, lockedAt(ledger))) {
       throw new AppError("This expense is locked by an approved settlement")
     }
     db.expenses = db.expenses.filter((expense) => expense.id !== expenseId)

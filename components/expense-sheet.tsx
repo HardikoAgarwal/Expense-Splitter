@@ -119,9 +119,10 @@ function ExpenseForm({
             : null
   const assigned = (shares ?? []).reduce((sum, share) => sum + share.sharePaise, 0)
   const remaining = totalPaise === null || !shares ? null : totalPaise - assigned
-  const hitsLock = Boolean(group.lockDate && expenseDate <= group.lockDate)
+  const futureDate = expenseDate > todayISO()
+  const hitsLock = Boolean(group.lockDate && expenseDate < group.lockDate)
   const canSave =
-    !locked && !hitsLock && !saving && Boolean(description.trim()) && shareError === null && Boolean(shares)
+    !locked && !hitsLock && !futureDate && !saving && Boolean(description.trim()) && shareError === null && Boolean(shares)
 
   // After fixing a disputed expense, the next step is asking the flagger to resolve it.
   function updatedMessage() {
@@ -251,7 +252,12 @@ function ExpenseForm({
               <Notice tone="neutral" icon={<LockIcon className="size-4" />} title={locked ? "Locked" : "Date locked"}>
                 {locked
                   ? `Settled through ${formatDay(group.lockDate ?? expense!.expenseDate)}.`
-                  : `Pick a day after ${formatDay(group.lockDate!)}.`}
+                  : `Pick ${formatDay(group.lockDate!)} or later.`}
+              </Notice>
+            ) : null}
+            {futureDate ? (
+              <Notice tone="neutral" icon={<LockIcon className="size-4" />} title="Future date">
+                Expenses can&apos;t be dated after today.
               </Notice>
             ) : null}
 
@@ -300,6 +306,7 @@ function ExpenseForm({
                   type="date"
                   disabled={locked}
                   value={expenseDate}
+                  max={todayISO()}
                   onChange={(event) => setExpenseDate(event.target.value)}
                   className="h-12 rounded-[12px] px-3 text-base"
                 />

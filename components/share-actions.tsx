@@ -68,10 +68,10 @@ export function CopyIconButton({ text, label, className }: { text: string; label
   )
 }
 
-/** The share message as plain text with a quiet accent rule, no box. */
+/** The share message as plain text in a thin outline, no filled card. */
 export function PlainMessage({ text, className }: { text: string; className?: string }) {
   return (
-    <p className={cn("border-l-2 border-primary/30 pl-4 text-[15px] leading-6 break-words whitespace-pre-line text-foreground/90", className)}>
+    <p className={cn("rounded-[14px] border border-border px-4 py-3.5 text-[15px] leading-6 break-words whitespace-pre-line text-foreground/90", className)}>
       {renderChatText(text)}
     </p>
   )

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { BanIcon, ChevronRightIcon, LockIcon, PlusIcon, RefreshCwIcon, SettingsIcon, Share2Icon } from "lucide-react"
+import { ChevronRightIcon, LockIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { BackLink } from "@/components/back-link"
@@ -289,34 +289,48 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         footer={inviteText ? <ShareActions title={`Join ${group.name} on Hissa`} text={inviteText} /> : null}
       >
         <div className="space-y-6 pb-2" aria-busy={inviting.pending}>
-          <div className="gradient-hero flex items-center justify-center gap-2 rounded-[16px] py-5 pr-3 pl-6">
-            <p className="money text-4xl tracking-[0.14em] text-white" aria-live="polite">
-              {inviting.pending && !invite ? "····" : invite?.code}
-            </p>
-            {invite ? (
-              <CopyIconButton text={invite.code} label="Copy code" className="text-white/80 hover:bg-white/15 hover:text-white" />
-            ) : null}
-          </div>
-          {inviteText ? <PlainMessage text={inviteText} /> : null}
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="lg" pending={inviting.pending} onClick={newCode}>
-              <RefreshCwIcon />
-              New code
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="text-negative hover:text-negative"
-              disabled={!invite || inviting.pending}
-              onClick={revokeInvite}
-            >
-              <BanIcon />
-              Revoke
-            </Button>
-          </div>
-          <p className="-mt-3 text-center text-xs text-muted-foreground">
-            A new code replaces the old one. Revoke stops the current code from working.
-          </p>
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">Share this code</p>
+            <div className="gradient-hero rounded-[16px] px-4 pt-5 pb-3">
+              <div className="flex items-center justify-center gap-2 pl-10">
+                <p className="money text-4xl tracking-[0.14em] text-white" aria-live="polite">
+                  {inviting.pending && !invite ? "····" : invite?.code}
+                </p>
+                {invite ? (
+                  <CopyIconButton text={invite.code} label="Copy code" className="text-white/80 hover:bg-white/15 hover:text-white" />
+                ) : (
+                  <span className="size-10" aria-hidden />
+                )}
+              </div>
+              <div className="mt-2 flex items-center justify-center gap-1 text-sm">
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 font-medium text-white/85 hover:text-white disabled:opacity-50"
+                  disabled={inviting.pending}
+                  onClick={newCode}
+                >
+                  New code
+                </button>
+                <span className="text-white/40" aria-hidden>
+                  ·
+                </span>
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 font-medium text-white/60 hover:text-white disabled:opacity-50"
+                  disabled={!invite || inviting.pending}
+                  onClick={revokeInvite}
+                >
+                  Revoke
+                </button>
+              </div>
+            </div>
+          </section>
+          {inviteText ? (
+            <section className="space-y-2">
+              <p className="text-sm font-medium text-muted-foreground">Or share this message</p>
+              <PlainMessage text={inviteText} />
+            </section>
+          ) : null}
         </div>
       </AppSheet>
 

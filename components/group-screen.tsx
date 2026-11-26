@@ -340,7 +340,6 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         onOpenChange={setManageOpen}
         noAutoFocus
         title={isAdmin ? "Group settings" : group.name}
-        description={`${group.members.length} ${group.members.length === 1 ? "person" : "people"} in ${group.name}`}
         footer={
           <div className="flex w-full gap-2">
             {selfMember ? (
@@ -371,12 +370,10 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         <div className="space-y-6 pb-4">
           {isAdmin ? (
           <form className={FIELD} onSubmit={rename}>
-            <label htmlFor="group-rename" className={FIELD_LABEL}>
-              Group name
-            </label>
             <div className="flex gap-2">
               <Input
                 id="group-rename"
+                aria-label="Group name"
                 value={groupName}
                 onChange={(event) => setGroupName(event.target.value)}
                 className="h-11 flex-1 rounded-[12px] px-3.5 text-base"
@@ -394,7 +391,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
           </form>
           ) : null}
           <div className="space-y-3">
-            <h3 className={SECTION_TITLE}>Members</h3>
+            <div className="flex items-center gap-2">
+              <h3 className={SECTION_TITLE}>Members</h3>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {group.members.length}
+              </span>
+            </div>
             {group.members.map((member) => {
               const net = group.balances.find((balance) => balance.userId === member.id)?.netPaise ?? 0
               return (

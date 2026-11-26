@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, Trash2Icon, SettingsIcon, Share2Icon } from "lucide-react"
+import { BarChart3Icon, ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, Trash2Icon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { BackLink } from "@/components/back-link"
@@ -132,16 +132,21 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const summaryLink = (
     <Link
       href={`/groups/${group.id}/summary`}
-      className="flex items-end justify-between gap-3 rounded-[16px] bg-card px-4 py-4 ring-1 ring-border transition hover:ring-primary/30 active:bg-muted/40"
+      className="flex items-center gap-3 rounded-[16px] bg-card px-3.5 py-3 ring-1 ring-border transition hover:ring-primary/30 active:bg-muted/40"
     >
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-          {formatMonth(month)} · group spent
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-accent text-accent-foreground">
+        <BarChart3Icon className="size-5" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
+          Spent this month
         </p>
-        <p className="money mt-2 text-[2rem] leading-none tracking-tight">{formatINR(monthTotal)}</p>
-        <p className="mt-2.5 text-xs font-medium text-primary">Tap to view summary</p>
+        <p className="money mt-0.5 text-[1.35rem] leading-none tracking-tight">{formatINR(monthTotal)}</p>
       </div>
-      <ChevronRightIcon className="mb-0.5 size-5 shrink-0 text-muted-foreground" />
+      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-primary">
+        View summary
+        <ChevronRightIcon className="size-4" aria-hidden />
+      </span>
     </Link>
   )
 
@@ -204,11 +209,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         </div>
       </header>
 
+      <div className="px-4 pb-6 md:px-0 md:pb-6">{summaryLink}</div>
+
       <div className="px-4 md:px-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-start lg:gap-8">
         <div className="space-y-6">
-          <div className="space-y-6 lg:hidden">
+          <div className="lg:hidden">
             <BalanceHero group={group} userId={user.id} />
-            {summaryLink}
           </div>
 
           <div role="tablist" aria-label="Group view" className="grid grid-cols-2 rounded-[12px] bg-muted p-1 lg:hidden">
@@ -264,7 +270,6 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
         <aside className="hidden space-y-5 lg:sticky lg:top-6 lg:block" aria-label="Balances">
           <BalanceHero group={group} userId={user.id} />
-          {summaryLink}
           <BalanceList group={group} userId={user.id} />
         </aside>
       </div>

@@ -275,7 +275,7 @@ export function Shell({
                 className={cn(
                   "md:hidden",
                   pinTopBar &&
-                    "sticky top-0 z-30 bg-background/80 backdrop-blur-xl supports-backdrop-filter:bg-background/65",
+                    "sticky top-0 z-30 transform-gpu bg-background/80 backdrop-blur-xl supports-backdrop-filter:bg-background/65",
                 )}
               >
                 <div className="flex items-center justify-between gap-2 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1.5">

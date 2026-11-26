@@ -101,6 +101,8 @@ export type Expense = {
   leftMember?: string | null
   /** The person who added this expense has left the group. */
   creatorLeft?: boolean
+  /** Both the creator and the payer have left, so nobody can answer a dispute on it. */
+  ownerGone?: boolean
   disputed: boolean
   flags: ExpenseFlag[]
 }

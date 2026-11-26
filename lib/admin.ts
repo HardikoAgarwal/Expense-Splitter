@@ -24,6 +24,9 @@ export function adminBlockReason(actor: AccessProfile | null): string | null {
 /** Members can invite people to the app; admins and members alike, as long as the account is active. */
 export const MEMBER_INVITE_LIMIT = 20
 
+/** How many people one group invite code can bring in before it stops working. */
+export const GROUP_INVITE_USE_LIMIT = 20
+
 export function inviteBlockReason(actor: AccessProfile | null): string | null {
   if (!actor || actor.disabled || (!actor.invited && !actor.isAdmin)) return "You cannot invite people right now"
   return null

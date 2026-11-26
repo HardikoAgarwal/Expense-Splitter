@@ -419,6 +419,7 @@ export async function getGroup(groupId: string): Promise<GroupDetail | null> {
         shares,
         locked: isExpenseLocked(expenseDate, lockedThrough, row.created_at as string, lockTime),
         creatorLeft: !activeIds.has(row.created_by as string),
+        ownerGone: !activeIds.has(row.created_by as string) && !activeIds.has(row.payer_id as string),
         leftMember: (() => {
           const gone = [row.payer_id as string, ...shares.map((share) => share.userId)].find((id) => !activeIds.has(id))
           return gone ? nameOf(gone) : null
@@ -679,12 +680,30 @@ export async function flagExpense(expenseId: string, reason: string) {
 
 export async function resolveFlag(flagId: string) {
   const [user, item] = await Promise.all([requireUser(), openFlag(flagId)])
-  const blocked = resolveFlagBlockReason({ actorId: user.id, flaggerId: item.flag.userId })
+  const blocked = resolveFlagBlockReason({
+    actorId: user.id,
+    flaggerId: item.flag.userId,
+    adminCanClose: user.id !== item.flag.userId && (await canCloseOrphanDispute(user.id, item)),
+  })
   if (blocked) throw new AppError(blocked)
   const supabase = await client()
   const { error } = await supabase.rpc("resolve_expense_flag", { p_flag_id: flagId })
   fail(error)
   return item
+}
+
+/** A group admin may close a dispute when neither the creator nor the payer is still in the group. */
+async function canCloseOrphanDispute(userId: string, item: OpenFlag) {
+  const supabase = await client()
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("user_id, role, left_at")
+    .eq("group_id", item.groupId)
+    .in("user_id", [userId, item.createdBy, item.payerId])
+  fail(error)
+  const rows = (data ?? []).filter((row) => !row.left_at)
+  const active = new Set(rows.map((row) => row.user_id as string))
+  return rows.some((row) => row.user_id === userId && row.role === "admin") && !active.has(item.createdBy) && !active.has(item.payerId)
 }
 
 /** The creator (or payer) has fixed things and asks the flagger to resolve. */

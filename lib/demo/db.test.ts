@@ -265,6 +265,70 @@ describe("demo ledger rules", () => {
     await db.deleteExpense(aarav.id, orphanId)
   })
 
+  it("closes disputes nobody can answer, caps invite codes, and deletes a group", async () => {
+    const db = await import("@/lib/demo/db")
+    const { todayISO } = await import("@/lib/money")
+    const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
+    const meera = await db.authenticate("meera@hissa.app", "demo1234")
+    const created = await db.createAccount(aarav.id, { email: "kabir@hissa.app", displayName: "Kabir Das" })
+    const kabir = await db.authenticate(created.email, created.temporaryPassword)
+    await db.joinByCode(kabir.id, "flat4b7k")
+
+    // Meera added and paid for this one, Kabir has the share, and Kabir disputes it.
+    const orphanId = await db.saveExpense(meera.id, {
+      groupId: IDS.flat,
+      description: "Cleaner",
+      amountPaise: 6000,
+      payerId: meera.id,
+      expenseDate: todayISO(),
+      category: "utilities",
+      shares: [{ userId: kabir.id, sharePaise: 6000 }],
+    })
+    const flagId = await db.flagExpense(kabir.id, orphanId, "Not mine")
+    // Meera disputes something Aarav added, which should close when she leaves.
+    const aaravExpense = await db.saveExpense(aarav.id, {
+      groupId: IDS.flat,
+      description: "Water can",
+      amountPaise: 4000,
+      payerId: aarav.id,
+      expenseDate: todayISO(),
+      category: "utilities",
+      shares: splitEqually(4000, [IDS.aarav, IDS.meera]),
+    })
+    const meeraFlag = await db.flagExpense(meera.id, aaravExpense, "Wrong amount")
+
+    // While Meera is around, a plain admin cannot close Kabir's dispute.
+    await expect(db.resolveFlag(aarav.id, flagId)).rejects.toThrow(/flagged it/)
+
+    await db.removeMember(aarav.id, IDS.flat, meera.id, true)
+    const after = await db.getGroup(aarav.id, IDS.flat)
+    expect(after?.expenses.find((e) => e.id === aaravExpense)?.disputed).toBe(false)
+    const stuck = after?.expenses.find((e) => e.id === orphanId)
+    expect(stuck?.ownerGone).toBe(true)
+    expect(stuck?.disputed).toBe(true)
+    await db.resolveFlag(aarav.id, flagId)
+    const closed = await db.getGroup(aarav.id, IDS.flat)
+    expect(closed?.expenses.find((e) => e.id === orphanId)?.disputed).toBe(false)
+    expect(meeraFlag).toBeTruthy()
+
+    // An invite code stops after its cap.
+    const invite = await db.createInvite(aarav.id, IDS.flat)
+    const { GROUP_INVITE_USE_LIMIT } = await import("@/lib/admin")
+    for (let i = 0; i < GROUP_INVITE_USE_LIMIT; i++) {
+      const email = await db.createInvitedUser({ name: `Guest ${i}`, email: `guest${i}@hissa.app`, password: "secret123" })
+      const guest = await db.authenticate(email, "secret123")
+      await db.joinByCode(guest.id, invite.code)
+    }
+    const extra = await db.createInvitedUser({ name: "Late Guest", email: "late@hissa.app", password: "secret123" })
+    const late = await db.authenticate(extra, "secret123")
+    await expect(db.joinByCode(late.id, invite.code)).rejects.toThrow(/limit/)
+
+    // Only an admin can delete the group, and it disappears for everyone.
+    await expect(db.deleteGroup(kabir.id, IDS.flat)).rejects.toThrow(/admin/)
+    await db.deleteGroup(aarav.id, IDS.flat)
+    expect(await db.getGroup(aarav.id, IDS.flat)).toBeNull()
+  })
+
   it("creates an account from a group invite and puts them in the group", async () => {
     const db = await import("@/lib/demo/db")
     const email = await db.createInvitedUser({ name: "Tara Nair", email: "tara@hissa.app", password: "secret123" })

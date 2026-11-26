@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, SettingsIcon, Share2Icon } from "lucide-react"
+import { ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, Trash2Icon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { BackLink } from "@/components/back-link"
@@ -61,10 +61,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   const [invite, setInvite] = useState<{ code: string; expiresAt: string } | null>(null)
   const [groupName, setGroupName] = useState(group.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteName, setDeleteName] = useState("")
   const [exitTarget, setExitTarget] = useState<Member | null>(null)
   const inviting = useAction()
   const managing = useAction()
   const isAdmin = group.myRole === "admin"
+  const owing = group.balances.filter((balance) => balance.netPaise !== 0)
   const adminCount = group.members.filter((member) => member.role === "admin").length
   const selfMember = group.members.find((member) => member.id === user.id) ?? null
   const month = monthStartISO(todayISO())
@@ -138,17 +140,11 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     <div>
       <StickySubhead>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <h1 className="min-w-0 truncate text-[1.75rem] font-semibold tracking-tight">{group.name}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-[1.75rem] leading-tight font-semibold tracking-tight">{group.name}</h1>
+            <MembersPill group={group} onClick={() => setMembersOpen(true)} className="mt-1" />
+          </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => setMembersOpen(true)}
-              aria-label={`${group.members.length} members. Show list`}
-              aria-haspopup="dialog"
-              className="rounded-full p-0.5 transition hover:bg-muted active:scale-[0.98]"
-            >
-              <PersonStack members={group.members} max={4} size="sm" />
-            </button>
             {isAdmin ? (
               <button
                 type="button"
@@ -180,15 +176,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         <div className="flex items-end justify-between gap-6">
           <div className="flex min-w-0 items-center gap-4">
             <h1 className="min-w-0 truncate text-[2.1rem] font-semibold tracking-tight">{group.name}</h1>
-            <button
-              type="button"
-              onClick={() => setMembersOpen(true)}
-              aria-label={`${group.members.length} members. Show list`}
-              aria-haspopup="dialog"
-              className="shrink-0 rounded-full p-0.5 transition hover:bg-muted active:scale-[0.98]"
-            >
-              <PersonStack members={group.members} max={4} size="sm" />
-            </button>
+            <MembersPill group={group} onClick={() => setMembersOpen(true)} />
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {isAdmin ? (
@@ -450,26 +438,97 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
               )
             })}
           </div>
-          {confirmDelete ? (
-            <div className="space-y-2 rounded-[12px] bg-negative/8 p-3">
-              <p className="text-sm">Delete {group.name} and all its expenses? This cannot be undone.</p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="lg" className="flex-1" onClick={() => setConfirmDelete(false)}>
-                  Keep it
-                </Button>
-                <Button variant="destructive" size="lg" className="flex-1" pending={managing.pending} onClick={removeGroup}>
-                  Delete group
-                </Button>
+          <div className="space-y-3 border-t pt-5">
+            <h3 className={SECTION_TITLE}>Danger zone</h3>
+            {confirmDelete ? (
+              <div className="space-y-3 rounded-[12px] bg-negative/8 p-3.5">
+                <p className="text-sm font-medium">Delete {group.name} for everyone?</p>
+                <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                  <li>
+                    {group.expenses.length} {group.expenses.length === 1 ? "expense" : "expenses"} and all payment history
+                    are erased for all {group.members.length} members.
+                  </li>
+                  {owing.length > 0 ? (
+                    <li className="text-negative">
+                      {owing.length} {owing.length === 1 ? "person has" : "people have"} unsettled balances. Settle up first
+                      if you still need them.
+                    </li>
+                  ) : null}
+                  <li>This cannot be undone.</li>
+                </ul>
+                <div className={FIELD}>
+                  <label htmlFor="group-delete-confirm" className={FIELD_LABEL}>
+                    Type <span className="font-semibold text-foreground">{group.name}</span> to confirm
+                  </label>
+                  <Input
+                    id="group-delete-confirm"
+                    value={deleteName}
+                    onChange={(event) => setDeleteName(event.target.value)}
+                    autoComplete="off"
+                    className="h-11 rounded-[12px] px-3.5 text-base"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="flex-1"
+                    onClick={() => {
+                      setConfirmDelete(false)
+                      setDeleteName("")
+                    }}
+                  >
+                    Keep it
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="lg"
+                    className="flex-1"
+                    pending={managing.pending}
+                    disabled={deleteName.trim() !== group.name.trim()}
+                    onClick={removeGroup}
+                  >
+                    Delete group
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <Button variant="ghost" size="lg" className="text-negative" onClick={() => setConfirmDelete(true)}>
-              Delete group
-            </Button>
-          )}
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Permanently remove this group and everything in it. Only admins can do this.
+                </p>
+                <Button variant="outline" size="lg" className="text-negative" onClick={() => setConfirmDelete(true)}>
+                  <Trash2Icon /> Delete group
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </AppSheet>
     </div>
+  )
+}
+
+/** The people in this group, as a tappable chip that opens the members list. */
+function MembersPill({ group, onClick, className }: { group: GroupDetail; onClick: () => void; className?: string }) {
+  const count = group.members.length
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-haspopup="dialog"
+      aria-label={`${count} ${count === 1 ? "member" : "members"}. Show list`}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-2 rounded-full bg-muted/60 py-0.5 pr-2.5 pl-1 text-xs font-medium text-muted-foreground ring-1 ring-border transition hover:bg-muted hover:text-foreground active:scale-[0.98]",
+        className,
+      )}
+    >
+      <PersonStack members={group.members} max={3} size="xs" />
+      <span>
+        {count} {count === 1 ? "member" : "members"}
+      </span>
+      <ChevronRightIcon className="size-3.5" aria-hidden />
+    </button>
   )
 }
 

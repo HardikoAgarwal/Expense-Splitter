@@ -28,11 +28,11 @@ export function PersonStack({
 }: {
   members: Member[]
   max?: number
-  size?: "sm" | "default"
+  size?: "xs" | "sm" | "default"
 }) {
   const shown = members.slice(0, max)
   const extra = members.length - shown.length
-  const dot = size === "sm" ? "size-9 text-[12px]" : "size-11 text-[13px]"
+  const dot = size === "xs" ? "size-6 text-[10px]" : size === "sm" ? "size-9 text-[12px]" : "size-11 text-[13px]"
   return (
     <div className="flex items-center -space-x-2">
       {shown.map((member) => (

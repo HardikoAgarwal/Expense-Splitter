@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { deleteExpenseAction, flagExpenseAction } from "@/lib/actions"
+import { deleteExpenseAction, flagExpenseAction, resolveFlagAction } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
 import { disputeRole, updatedSinceRaised } from "@/lib/disputes"
 import { memberNameIn } from "@/lib/members"
@@ -186,6 +186,22 @@ export function ExpenseDetail({
                         updatedSinceRaised: updatedSinceRaised(openFlag, expense.updatedAt),
                       }}
                     />
+                  ) : expense.ownerGone && group.myRole === "admin" ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Everyone who could answer this has left the group. As an admin you can close it.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="w-full"
+                        pending={busy}
+                        onClick={() => run(() => resolveFlagAction(openFlag.id), { success: "Dispute closed" })}
+                      >
+                        Close dispute
+                      </Button>
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       {openFlag.awaiting === "flagger"

@@ -50,6 +50,7 @@ import {
   inviteBlockReason,
   inviteLimitReason,
   mutateUserBlockReason,
+  GROUP_INVITE_USE_LIMIT,
   SIGNUP_LINK_DAYS,
   signInBlockReason,
   signupInputReason,
@@ -136,6 +137,8 @@ type DemoDb = {
     createdBy: string
     expiresAt: string
     createdAt: string
+    uses?: number
+    maxUses?: number
   }[]
   expenses: DemoExpense[]
   settlements: Settlement[]
@@ -398,6 +401,7 @@ function presentGroup(db: DemoDb, groupId: string, userId: string): GroupDetail 
         locked: isExpenseLocked(expense.expenseDate, lockedThrough, expense.createdAt, lockTime),
         leftMember: leftMemberIn(db, expense),
         creatorLeft: !memberIds(db, groupId).includes(expense.createdBy),
+        ownerGone: !memberIds(db, groupId).includes(expense.createdBy) && !memberIds(db, groupId).includes(expense.payerId),
         disputed: flags.length > 0,
         flags,
       }
@@ -712,7 +716,19 @@ function exitBlock(db: DemoDb, groupId: string, userId: string, self: boolean, i
   })
 }
 
-function markLeft(db: DemoDb, groupId: string, userId: string) {
+/** A leaver has settled to zero, so disputes they raised are moot: close them. */
+function closeMemberFlags(db: DemoDb, groupId: string, userId: string, actorId: string) {
+  const inGroup = new Set(db.expenses.filter((expense) => expense.groupId === groupId).map((expense) => expense.id))
+  for (const flag of db.flags) {
+    if (flag.userId !== userId || flag.resolvedAt || !inGroup.has(flag.expenseId)) continue
+    flag.resolvedAt = new Date().toISOString()
+    flag.resolvedBy = actorId
+    addEvent(flag, "resolved", actorId, "Closed because they left the group")
+  }
+}
+
+function markLeft(db: DemoDb, groupId: string, userId: string, actorId = userId) {
+  closeMemberFlags(db, groupId, userId, actorId)
   const row = db.members.find((member) => member.groupId === groupId && member.userId === userId && !member.leftAt)
   if (row) row.leftAt = new Date().toISOString()
 }
@@ -749,7 +765,7 @@ export async function removeMember(actorId: string, groupId: string, userId: str
         })
       }
     }
-    markLeft(db, groupId, userId)
+    markLeft(db, groupId, userId, actorId)
     await persist(db)
   })
 }
@@ -799,6 +815,8 @@ export async function createInvite(userId: string, groupId: string) {
       createdBy: userId,
       expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       createdAt: now.toISOString(),
+      uses: 0,
+      maxUses: GROUP_INVITE_USE_LIMIT,
     }
     db.invites.push(invite)
     await persist(db)
@@ -839,6 +857,10 @@ export async function joinByCode(userId: string, code: string) {
     if (memberIds(db, invite.groupId).includes(userId)) {
       return { groupId: invite.groupId, alreadyMember: true }
     }
+    if ((invite.uses ?? 0) >= (invite.maxUses ?? GROUP_INVITE_USE_LIMIT)) {
+      throw new AppError("This invite has reached its limit. Ask for a new one")
+    }
+    invite.uses = (invite.uses ?? 0) + 1
     const earlier = db.members.find((member) => member.groupId === invite.groupId && member.userId === userId)
     if (earlier) {
       earlier.leftAt = null
@@ -1108,7 +1130,15 @@ export async function requestResolve(userId: string, flagId: string, note: strin
 export async function resolveFlag(userId: string, flagId: string) {
   return withDb(async (db) => {
     const { flag, expense } = openDemoFlag(db, flagId)
-    const blocked = resolveFlagBlockReason({ actorId: userId, flaggerId: flag.userId })
+    const active = memberIds(db, expense.groupId)
+    const isAdmin = db.members.some(
+      (member) => member.groupId === expense.groupId && member.userId === userId && !member.leftAt && member.role === "admin",
+    )
+    const blocked = resolveFlagBlockReason({
+      actorId: userId,
+      flaggerId: flag.userId,
+      adminCanClose: isAdmin && !active.includes(expense.createdBy) && !active.includes(expense.payerId),
+    })
     if (blocked) throw new AppError(blocked)
     flag.resolvedAt = new Date().toISOString()
     flag.resolvedBy = userId

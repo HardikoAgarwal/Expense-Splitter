@@ -25,8 +25,13 @@ export function flagBlockReason(input: { sharePaise: number; actorId: string; cr
   return null
 }
 
-export function resolveFlagBlockReason(input: { actorId: string; flaggerId: string }): string | null {
-  return input.actorId === input.flaggerId ? null : ONLY_FLAGGER_MESSAGE
+/** A group admin may close a dispute when the creator and payer have both left, since nobody is left to answer it. */
+export function resolveFlagBlockReason(input: {
+  actorId: string
+  flaggerId: string
+  adminCanClose?: boolean
+}): string | null {
+  return input.actorId === input.flaggerId || input.adminCanClose ? null : ONLY_FLAGGER_MESSAGE
 }
 
 export function stillWrongBlockReason(input: {

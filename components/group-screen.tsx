@@ -11,7 +11,7 @@ import { CategoryIcon } from "@/components/category-icon"
 import { ExpenseDetail } from "@/components/expense-detail"
 import { ExitGroupSheet } from "@/components/leave-group"
 import { ExpenseFilterBar } from "@/components/expense-filters"
-import { Person, PersonStack } from "@/components/person"
+import { Person } from "@/components/person"
 import { ShowList } from "@/components/show-list"
 import { CopyIconButton, PlainMessage, ShareActions } from "@/components/share-actions"
 import { StickySubhead, useExpense, useRegisterGroup } from "@/components/shell"
@@ -149,21 +149,19 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     <div>
       <StickySubhead>
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="truncate text-[1.75rem] leading-tight font-semibold tracking-tight">{group.name}</h1>
-            <MembersPill group={group} onClick={() => setManageOpen(true)} className="mt-1" />
+          <div className="flex min-w-0 items-center gap-2.5">
+            <h1 className="min-w-0 truncate text-[1.75rem] font-semibold tracking-tight">{group.name}</h1>
+            <MembersTag count={group.members.length} />
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={() => setManageOpen(true)}
-                className="flex size-10 items-center justify-center rounded-[12px] active:bg-muted"
-              >
-                <SettingsIcon className="size-5" />
-                <span className="sr-only">Group settings</span>
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => setManageOpen(true)}
+              className="flex size-10 items-center justify-center rounded-[12px] active:bg-muted"
+            >
+              <SettingsIcon className="size-5" />
+              <span className="sr-only">Group settings</span>
+            </button>
             {isAdmin ? (
               <button
                 type="button"
@@ -185,14 +183,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         <div className="flex items-end justify-between gap-6">
           <div className="flex min-w-0 items-center gap-4">
             <h1 className="min-w-0 truncate text-[2.1rem] font-semibold tracking-tight">{group.name}</h1>
-            <MembersPill group={group} onClick={() => setManageOpen(true)} />
+            <MembersTag count={group.members.length} />
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {isAdmin ? (
-              <Button variant="ghost" size="lg" onClick={() => setManageOpen(true)} aria-label="Group settings">
-                <SettingsIcon />
-              </Button>
-            ) : null}
+            <Button variant="ghost" size="lg" onClick={() => setManageOpen(true)} aria-label="Group settings">
+              <SettingsIcon />
+            </Button>
             {isAdmin ? (
               <Button variant="outline" size="lg" onClick={invitePeople}>
                 <Share2Icon /> Invite
@@ -342,20 +338,34 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
       <AppSheet
         open={manageOpen}
         onOpenChange={setManageOpen}
+        noAutoFocus
         title={isAdmin ? "Group settings" : group.name}
         description={`${group.members.length} ${group.members.length === 1 ? "person" : "people"} in ${group.name}`}
         footer={
-          selfMember ? (
-            <Button
-              variant="outline"
-              size="xl"
-              className="w-full text-negative hover:text-negative"
-              onClick={() => startExit(selfMember)}
-            >
-              <LogOutIcon />
-              Leave group
-            </Button>
-          ) : undefined
+          <div className="flex w-full gap-2">
+            {selfMember ? (
+              <Button
+                variant="outline"
+                size="xl"
+                className="flex-1 text-negative hover:text-negative"
+                onClick={() => startExit(selfMember)}
+              >
+                <LogOutIcon />
+                Leave group
+              </Button>
+            ) : null}
+            {isAdmin ? (
+              <Button
+                variant="outline"
+                size="xl"
+                className="flex-1 text-negative hover:text-negative"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2Icon />
+                Delete group
+              </Button>
+            ) : null}
+          </div>
         }
       >
         <div className="space-y-6 pb-4">
@@ -437,75 +447,56 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
               </ul>
             </div>
           ) : null}
-          {isAdmin ? (
-          <div className="space-y-3 border-t pt-5">
-            <h3 className={SECTION_TITLE}>Danger zone</h3>
-            {confirmDelete ? (
-              <div className="space-y-3 rounded-[12px] bg-negative/8 p-3.5">
-                <p className="text-sm font-medium">Delete {group.name} for everyone?</p>
-                <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
-                  <li>
-                    {group.expenses.length} {group.expenses.length === 1 ? "expense" : "expenses"} and all payment history
-                    are erased for all {group.members.length} members.
-                  </li>
-                  {owing.length > 0 ? (
-                    <li className="text-negative">
-                      {owing.length} {owing.length === 1 ? "person has" : "people have"} unsettled balances. Settle up first
-                      if you still need them.
-                    </li>
-                  ) : null}
-                  <li>This cannot be undone.</li>
-                </ul>
-                <div className={FIELD}>
-                  <label htmlFor="group-delete-confirm" className={FIELD_LABEL}>
-                    Type <span className="font-semibold text-foreground">{group.name}</span> to confirm
-                  </label>
-                  <Input
-                    id="group-delete-confirm"
-                    value={deleteName}
-                    onChange={(event) => setDeleteName(event.target.value)}
-                    autoComplete="off"
-                    className="h-11 rounded-[12px] px-3.5 text-base"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="flex-1"
-                    onClick={() => {
-                      setConfirmDelete(false)
-                      setDeleteName("")
-                    }}
-                  >
-                    Keep it
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="lg"
-                    className="flex-1"
-                    pending={managing.pending}
-                    disabled={deleteName.trim() !== group.name.trim()}
-                    onClick={removeGroup}
-                  >
-                    Delete group
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Permanently remove this group and everything in it. Only admins can do this.
-                </p>
-                <Button variant="outline" size="lg" className="text-negative" onClick={() => setConfirmDelete(true)}>
-                  <Trash2Icon /> Delete group
-                </Button>
-              </>
-            )}
-          </div>
-          ) : null}
         </div>
       </AppSheet>
+
+      <Dialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          setConfirmDelete(open)
+          if (!open) setDeleteName("")
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {group.name} for everyone?</DialogTitle>
+            <DialogDescription>
+              {group.expenses.length} {group.expenses.length === 1 ? "expense" : "expenses"} and all payment history are
+              erased for all {group.members.length} members. This cannot be undone.
+              {owing.length > 0
+                ? ` ${owing.length} ${owing.length === 1 ? "person has" : "people have"} unsettled balances.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className={FIELD}>
+            <label htmlFor="group-delete-confirm" className={FIELD_LABEL}>
+              Type <span className="font-semibold text-foreground">{group.name}</span> to confirm
+            </label>
+            <Input
+              id="group-delete-confirm"
+              value={deleteName}
+              onChange={(event) => setDeleteName(event.target.value)}
+              autoComplete="off"
+              className="h-11 rounded-[12px] px-3.5 text-base"
+            />
+          </div>
+          <DialogFooter className="bg-transparent">
+            <Button type="button" variant="outline" className="h-11 rounded-[12px]" onClick={() => setConfirmDelete(false)}>
+              Keep it
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-11 rounded-[12px]"
+              pending={managing.pending}
+              disabled={deleteName.trim() !== group.name.trim()}
+              onClick={removeGroup}
+            >
+              Delete group
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={roleChange !== null} onOpenChange={(open) => !open && setRoleChange(null)}>
         <DialogContent>
@@ -537,26 +528,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   )
 }
 
-/** The people in this group, as a tappable chip that opens the members list. */
-function MembersPill({ group, onClick, className }: { group: GroupDetail; onClick: () => void; className?: string }) {
-  const count = group.members.length
+/** A plain tag with how many people are in the group. Not a button; the settings sheet lists them. */
+function MembersTag({ count }: { count: number }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-haspopup="dialog"
-      aria-label={`${count} ${count === 1 ? "member" : "members"}. Show list`}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-2 rounded-full bg-muted/60 py-0.5 pr-2.5 pl-1 text-xs font-medium text-muted-foreground ring-1 ring-border transition hover:bg-muted hover:text-foreground active:scale-[0.98]",
-        className,
-      )}
-    >
-      <PersonStack members={group.members} max={3} size="xs" />
-      <span>
-        {count} {count === 1 ? "member" : "members"}
-      </span>
-      <ChevronRightIcon className="size-3.5" aria-hidden />
-    </button>
+    <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+      {count} {count === 1 ? "member" : "members"}
+    </span>
   )
 }
 

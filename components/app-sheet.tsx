@@ -18,6 +18,7 @@ export function AppSheet({
   children,
   footer,
   tall,
+  noAutoFocus,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -26,10 +27,13 @@ export function AppSheet({
   children: React.ReactNode
   footer?: React.ReactNode
   tall?: boolean
+  /** Don't move focus into the first field when it opens. */
+  noAutoFocus?: boolean
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        initialFocus={noAutoFocus ? false : undefined}
         className={cn(
           "flex w-[calc(100%-1.5rem)] max-w-md flex-col gap-0 overflow-hidden rounded-[20px] p-0 ring-1 ring-border",
           // A dialog opened from this one (a note, a confirm) takes the focus; this one steps back.

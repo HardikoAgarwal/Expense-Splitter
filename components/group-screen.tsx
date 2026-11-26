@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { BarChart3Icon, ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, Trash2Icon, SettingsIcon, Share2Icon } from "lucide-react"
+import { ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, Trash2Icon, SettingsIcon, Share2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { BackLink } from "@/components/back-link"
@@ -129,27 +129,6 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     })
   }
 
-  const summaryLink = (
-    <Link
-      href={`/groups/${group.id}/summary`}
-      className="flex items-center gap-3 rounded-[16px] bg-card px-3.5 py-3 ring-1 ring-border transition hover:ring-primary/30 active:bg-muted/40"
-    >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-accent text-accent-foreground">
-        <BarChart3Icon className="size-5" aria-hidden />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
-          Spent this month
-        </p>
-        <p className="money mt-0.5 text-[1.35rem] leading-none tracking-tight">{formatINR(monthTotal)}</p>
-      </div>
-      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-primary">
-        View summary
-        <ChevronRightIcon className="size-4" aria-hidden />
-      </span>
-    </Link>
-  )
-
   return (
     <div>
       <StickySubhead>
@@ -209,12 +188,10 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         </div>
       </header>
 
-      <div className="px-4 pb-6 md:px-0 md:pb-6">{summaryLink}</div>
-
       <div className="px-4 md:px-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:items-start lg:gap-8">
         <div className="space-y-6">
           <div className="lg:hidden">
-            <BalanceHero group={group} userId={user.id} />
+            <BalanceHero group={group} userId={user.id} spentPaise={monthTotal} />
           </div>
 
           <div role="tablist" aria-label="Group view" className="grid grid-cols-2 rounded-[12px] bg-muted p-1 lg:hidden">
@@ -269,7 +246,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         </div>
 
         <aside className="hidden space-y-5 lg:sticky lg:top-6 lg:block" aria-label="Balances">
-          <BalanceHero group={group} userId={user.id} />
+          <BalanceHero group={group} userId={user.id} spentPaise={monthTotal} />
           <BalanceList group={group} userId={user.id} />
         </aside>
       </div>
@@ -544,15 +521,16 @@ function MembersTag({ count }: { count: number }) {
   )
 }
 
-function BalanceHero({ group, userId }: { group: GroupDetail; userId: string }) {
+function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId: string; spentPaise: number }) {
   const net = group.myNetPaise
   const positive = net > 0
   const negative = net < 0
   const mine = debtsInvolving(group.debts, userId, group.members)
   return (
+    <div>
     <section
       className={cn(
-        "relative overflow-hidden rounded-[16px] px-5 py-5 text-white",
+        "relative z-10 overflow-hidden rounded-[16px] px-5 py-5 text-white",
         negative ? "gradient-hero-owe" : "gradient-hero",
       )}
     >
@@ -574,6 +552,19 @@ function BalanceHero({ group, userId }: { group: GroupDetail; userId: string }) 
         </Link>
       </div>
     </section>
+      <Link
+        href={`/groups/${group.id}/summary`}
+        className="-mt-3 flex items-center justify-between gap-3 rounded-b-[16px] bg-card px-4 pt-6 pb-3 text-sm ring-1 ring-border transition hover:bg-muted/60 active:bg-muted"
+      >
+        <span className="text-muted-foreground">
+          Spent this month <span className="money ml-1 text-base text-foreground">{formatINR(spentPaise)}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-primary">
+          View summary
+          <ChevronRightIcon className="size-4" aria-hidden />
+        </span>
+      </Link>
+    </div>
   )
 }
 

@@ -17,10 +17,12 @@ import { CopyIconButton, PlainMessage, ShareActions } from "@/components/share-a
 import { StickySubhead, useExpense, useRegisterGroup } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { FIELD, FIELD_LABEL, SECTION_TITLE } from "@/components/field"
 import {
   createInviteAction,
   deleteGroupAction,
+  demoteMemberAction,
   promoteMemberAction,
   regenerateInviteAction,
   renameGroupAction,
@@ -57,7 +59,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
   }, [linked, editId, group, user.id, router, openExpense])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
-  const [membersOpen, setMembersOpen] = useState(false)
+  const [roleChange, setRoleChange] = useState<{ member: Member; to: "admin" | "member" } | null>(null)
   const [invite, setInvite] = useState<{ code: string; expiresAt: string } | null>(null)
   const [groupName, setGroupName] = useState(group.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -95,14 +97,21 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
     ? groupInviteMessage({ group: group.name, appUrl: appBaseUrl(), code: invite.code })
     : ""
 
-  function promote(member: Member) {
-    managing.run(() => promoteMemberAction(group.id, member.id), {
-      success: `${member.displayName.split(" ")[0]} is now an admin`,
-    })
+  function changeRole() {
+    if (!roleChange) return
+    const { member, to } = roleChange
+    const first = member.displayName.split(" ")[0]
+    const self = member.id === user.id
+    managing.run(
+      () => (to === "admin" ? promoteMemberAction(group.id, member.id) : demoteMemberAction(group.id, member.id)),
+      {
+        success: to === "admin" ? `${first} is now an admin` : self ? "You are now a member" : `${first} is now a member`,
+        onSuccess: () => setRoleChange(null),
+      },
+    )
   }
 
   function startExit(member: Member) {
-    setMembersOpen(false)
     setManageOpen(false)
     setExitTarget(member)
   }
@@ -142,7 +151,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate text-[1.75rem] leading-tight font-semibold tracking-tight">{group.name}</h1>
-            <MembersPill group={group} onClick={() => setMembersOpen(true)} className="mt-1" />
+            <MembersPill group={group} onClick={() => setManageOpen(true)} className="mt-1" />
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             {isAdmin ? (
@@ -176,7 +185,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         <div className="flex items-end justify-between gap-6">
           <div className="flex min-w-0 items-center gap-4">
             <h1 className="min-w-0 truncate text-[2.1rem] font-semibold tracking-tight">{group.name}</h1>
-            <MembersPill group={group} onClick={() => setMembersOpen(true)} />
+            <MembersPill group={group} onClick={() => setManageOpen(true)} />
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {isAdmin ? (
@@ -328,10 +337,12 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
         </div>
       </AppSheet>
 
+      <ExitGroupSheet group={group} viewerId={user.id} target={exitTarget} onClose={() => setExitTarget(null)} />
+
       <AppSheet
-        open={membersOpen}
-        onOpenChange={setMembersOpen}
-        title="Members"
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+        title={isAdmin ? "Group settings" : group.name}
         description={`${group.members.length} ${group.members.length === 1 ? "person" : "people"} in ${group.name}`}
         footer={
           selfMember ? (
@@ -347,42 +358,8 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
           ) : undefined
         }
       >
-        <ul className="divide-y pb-2">
-          {group.members.map((member) => (
-            <li key={member.id} className="flex items-center gap-3 py-3">
-              <Person id={member.id} name={member.displayName} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">
-                  {member.displayName}
-                  {member.id === user.id ? <span className="ml-1.5 text-sm font-normal text-muted-foreground">(You)</span> : null}
-                </p>
-                <p className="truncate text-xs text-muted-foreground">{member.email}</p>
-              </div>
-              {member.role === "admin" ? (
-                <span className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-foreground">Admin</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        {group.formerMembers.length > 0 ? (
-          <div className="pt-2 pb-3">
-            <h3 className={cn(SECTION_TITLE, "mb-1")}>Left the group</h3>
-            <ul className="divide-y">
-              {group.formerMembers.map((member) => (
-                <li key={member.id} className="flex items-center gap-3 py-2.5 opacity-70">
-                  <Person id={member.id} name={member.displayName} />
-                  <p className="min-w-0 flex-1 truncate text-sm">{member.displayName}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </AppSheet>
-
-      <ExitGroupSheet group={group} viewerId={user.id} target={exitTarget} onClose={() => setExitTarget(null)} />
-
-      <AppSheet open={manageOpen} onOpenChange={setManageOpen} title="Group settings">
         <div className="space-y-6 pb-4">
+          {isAdmin ? (
           <form className={FIELD} onSubmit={rename}>
             <label htmlFor="group-rename" className={FIELD_LABEL}>
               Group name
@@ -405,8 +382,9 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
               </Button>
             </div>
           </form>
+          ) : null}
           <div className="space-y-3">
-            <h3 className={SECTION_TITLE}>Participants</h3>
+            <h3 className={SECTION_TITLE}>Members</h3>
             {group.members.map((member) => {
               const net = group.balances.find((balance) => balance.userId === member.id)?.netPaise ?? 0
               return (
@@ -424,20 +402,42 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
                       </span>
                     </p>
                   </div>
-                  {member.role !== "admin" ? (
-                    <Button variant="ghost" size="sm" className="text-primary" disabled={managing.pending} onClick={() => promote(member)}>
-                      Promote
-                    </Button>
-                  ) : null}
-                  {member.id !== user.id ? (
-                    <Button variant="ghost" size="sm" className="text-negative" disabled={managing.pending} onClick={() => startExit(member)}>
-                      Remove
-                    </Button>
+                  {isAdmin ? (
+                    <div className="flex shrink-0 items-center">
+                      {member.role !== "admin" ? (
+                        <Button variant="ghost" size="sm" className="text-primary" disabled={managing.pending} onClick={() => setRoleChange({ member, to: "admin" })}>
+                          Make admin
+                        </Button>
+                      ) : adminCount > 1 ? (
+                        <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={managing.pending} onClick={() => setRoleChange({ member, to: "member" })}>
+                          Remove admin
+                        </Button>
+                      ) : null}
+                      {member.id !== user.id ? (
+                        <Button variant="ghost" size="sm" className="text-negative" disabled={managing.pending} onClick={() => startExit(member)}>
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               )
             })}
           </div>
+          {group.formerMembers.length > 0 ? (
+            <div className="space-y-2">
+              <h3 className={SECTION_TITLE}>Left the group</h3>
+              <ul className="space-y-2">
+                {group.formerMembers.map((member) => (
+                  <li key={member.id} className="flex items-center gap-3 opacity-70">
+                    <Person id={member.id} name={member.displayName} />
+                    <p className="min-w-0 flex-1 truncate text-sm">{member.displayName}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {isAdmin ? (
           <div className="space-y-3 border-t pt-5">
             <h3 className={SECTION_TITLE}>Danger zone</h3>
             {confirmDelete ? (
@@ -503,8 +503,36 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
               </>
             )}
           </div>
+          ) : null}
         </div>
       </AppSheet>
+
+      <Dialog open={roleChange !== null} onOpenChange={(open) => !open && setRoleChange(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {roleChange?.to === "admin"
+                ? `Make ${roleChange.member.displayName.split(" ")[0]} an admin?`
+                : roleChange?.member.id === user.id
+                  ? "Step down as admin?"
+                  : `Remove ${roleChange?.member.displayName.split(" ")[0]} as admin?`}
+            </DialogTitle>
+            <DialogDescription>
+              {roleChange?.to === "admin"
+                ? "Admins can invite and remove people, rename or delete the group, and edit expenses added by people who left."
+                : "They stay in the group as a regular member and lose all admin controls."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="bg-transparent">
+            <Button type="button" variant="outline" className="h-11 rounded-[12px]" onClick={() => setRoleChange(null)}>
+              Cancel
+            </Button>
+            <Button type="button" className="h-11 rounded-[12px]" pending={managing.pending} onClick={changeRole}>
+              {roleChange?.to === "admin" ? "Make admin" : "Remove admin"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

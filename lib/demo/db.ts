@@ -55,7 +55,7 @@ import {
   signInBlockReason,
   signupInputReason,
 } from "@/lib/admin"
-import { groupAdminBlockReason, memberExitBlockReason, promoteMemberBlockReason } from "@/lib/group-access"
+import { demoteMemberBlockReason, groupAdminBlockReason, memberExitBlockReason, promoteMemberBlockReason } from "@/lib/group-access"
 import { hashPassword, verifyPassword } from "@/lib/demo/password"
 import { DEMO_INVITES, IDS, seedExpenses } from "@/lib/demo/seed-data"
 import { canModifyExpense, ONLY_CREATOR_MESSAGE } from "@/lib/expense-access"
@@ -776,6 +776,23 @@ export async function leaveGroup(userId: string, groupId: string) {
     const blocked = exitBlock(db, groupId, userId, true)
     if (blocked) throw new AppError(blocked)
     markLeft(db, groupId, userId)
+    await persist(db)
+  })
+}
+
+export async function demoteMember(actorId: string, groupId: string, userId: string) {
+  return withDb(async (db) => {
+    assertGroupAdmin(db, groupId, actorId)
+    const active = db.members.filter((member) => member.groupId === groupId && !member.leftAt)
+    const target = active.find((member) => member.userId === userId)
+    if (!target) throw new AppError("That person is not in the group")
+    const blocked = demoteMemberBlockReason({
+      actorRole: "admin",
+      targetRole: target.role,
+      adminCount: active.filter((member) => member.role === "admin").length,
+    })
+    if (blocked) throw new AppError(blocked)
+    target.role = "member"
     await persist(db)
   })
 }

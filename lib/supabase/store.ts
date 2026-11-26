@@ -502,6 +502,10 @@ export async function leaveGroup(groupId: string) {
   await rpcVoid("leave_group", { p_group_id: groupId })
 }
 
+export async function demoteMember(groupId: string, userId: string) {
+  await rpcVoid("demote_group_member", { p_group_id: groupId, p_user_id: userId })
+}
+
 export async function promoteMember(groupId: string, userId: string) {
   await rpcVoid("promote_group_member", { p_group_id: groupId, p_user_id: userId })
 }

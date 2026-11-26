@@ -34,6 +34,18 @@ export function promoteMemberBlockReason(input: {
   return null
 }
 
+export function demoteMemberBlockReason(input: {
+  actorRole: GroupRole | string
+  targetRole: GroupRole | string
+  adminCount: number
+}): string | null {
+  const blocked = groupAdminBlockReason(normalizeGroupRole(input.actorRole))
+  if (blocked) return blocked
+  if (normalizeGroupRole(input.targetRole) !== "admin") return "They are not an admin"
+  if (input.adminCount <= 1) return "A group needs at least one admin"
+  return null
+}
+
 /**
  * Why someone cannot leave (or be removed from) a group right now, or null when they can.
  * They must be settled up: no balance and no payment waiting for approval. Mirrors

@@ -329,6 +329,20 @@ describe("demo ledger rules", () => {
     expect(await db.getGroup(aarav.id, IDS.flat)).toBeNull()
   })
 
+  it("promotes and demotes admins but always keeps one", async () => {
+    const db = await import("@/lib/demo/db")
+    const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
+    const meera = await db.authenticate("meera@hissa.app", "demo1234")
+    await expect(db.demoteMember(aarav.id, IDS.flat, aarav.id)).rejects.toThrow(/at least one admin/)
+    await expect(db.demoteMember(aarav.id, IDS.flat, meera.id)).rejects.toThrow(/not an admin/)
+    await expect(db.demoteMember(meera.id, IDS.flat, aarav.id)).rejects.toThrow(/admin/)
+    await db.promoteMember(aarav.id, IDS.flat, meera.id)
+    await db.demoteMember(meera.id, IDS.flat, aarav.id)
+    const group = await db.getGroup(meera.id, IDS.flat)
+    expect(group?.members.find((member) => member.id === aarav.id)?.role).toBe("member")
+    expect(group?.myRole).toBe("admin")
+  })
+
   it("creates an account from a group invite and puts them in the group", async () => {
     const db = await import("@/lib/demo/db")
     const email = await db.createInvitedUser({ name: "Tara Nair", email: "tara@hissa.app", password: "secret123" })

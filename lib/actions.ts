@@ -131,6 +131,10 @@ export async function leaveGroupAction(groupId: string) {
   return run(() => queries.leaveGroup(groupId))
 }
 
+export async function demoteMemberAction(groupId: string, userId: string) {
+  return run(() => queries.demoteMember(groupId, userId))
+}
+
 export async function promoteMemberAction(groupId: string, userId: string) {
   return run(() => queries.promoteMember(groupId, userId))
 }

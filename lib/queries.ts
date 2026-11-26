@@ -188,6 +188,12 @@ export async function leaveGroup(groupId: string) {
   return demo.leaveGroup(user.id, groupId)
 }
 
+export async function demoteMember(groupId: string, userId: string) {
+  const user = await actorOrThrow()
+  if (!isDemoMode()) return remote.demoteMember(groupId, userId)
+  return demo.demoteMember(user.id, groupId, userId)
+}
+
 export async function promoteMember(groupId: string, userId: string) {
   const user = await actorOrThrow()
   if (!isDemoMode()) return remote.promoteMember(groupId, userId)

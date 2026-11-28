@@ -10,6 +10,7 @@ import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
 import { Section } from "@/components/section"
 import { ShowList } from "@/components/show-list"
+import { SyncQueueSection } from "@/components/sync-queue"
 import { Button } from "@/components/ui/button"
 import { markNoticesSeenAction, resolveSettlementAction } from "@/lib/actions"
 import { isTaskNotice } from "@/lib/disputes"
@@ -98,6 +99,8 @@ export function ActivityScreen({
     <div className="px-4 pt-4 md:pt-6">
       <p className="hidden text-sm font-medium tracking-[0.18em] text-primary uppercase md:block">Activity</p>
       <h1 className="text-[1.75rem] font-semibold tracking-tight md:mt-2">What moved</h1>
+
+      <SyncQueueSection />
 
       {freshNotices.length > 0 ? (
         <Section

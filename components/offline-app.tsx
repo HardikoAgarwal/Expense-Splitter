@@ -9,7 +9,15 @@ import { useOffline } from "@/components/offline-provider"
 import { SyncQueueSection } from "@/components/sync-queue"
 import { applyOutboxToGroup } from "@/lib/offline/store"
 
-function NeedsConnection({ title, body }: { title: string; body: string }) {
+function NeedsConnection({
+  title,
+  body,
+  showQueue = false,
+}: {
+  title: string
+  body: string
+  showQueue?: boolean
+}) {
   return (
     <div className="px-4 pt-6 pb-8 md:px-0">
       <div className="flex flex-col items-center rounded-[16px] bg-card px-6 py-12 text-center ring-1 ring-border">
@@ -19,9 +27,24 @@ function NeedsConnection({ title, body }: { title: string; body: string }) {
         <h1 className="mt-4 text-lg font-semibold">{title}</h1>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">{body}</p>
       </div>
-      <div className="mt-5">
-        <SyncQueueSection />
-      </div>
+      {showQueue ? (
+        <div className="mt-2">
+          <SyncQueueSection hideWhenEmpty={false} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function OfflineActivity() {
+  return (
+    <div className="px-4 pt-4 pb-8 md:pt-6 md:px-0">
+      <p className="hidden text-sm font-medium tracking-[0.18em] text-primary uppercase md:block">Activity</p>
+      <h1 className="text-[1.75rem] font-semibold tracking-tight md:mt-2">What moved</h1>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
+        Live activity needs a connection. Your offline changes stay here until they sync.
+      </p>
+      <SyncQueueSection hideWhenEmpty={false} />
     </div>
   )
 }
@@ -37,6 +60,7 @@ export function OfflineApp({ path }: { path: string }) {
       <NeedsConnection
         title="Nothing cached yet"
         body="Open Hissa once while online so groups and expenses can be saved for offline use."
+        showQueue
       />
     )
   }
@@ -53,6 +77,7 @@ export function OfflineApp({ path }: { path: string }) {
         <NeedsConnection
           title="Group not cached"
           body="Open this group once while online, then it will be available offline."
+          showQueue
         />
       )
     }
@@ -65,12 +90,7 @@ export function OfflineApp({ path }: { path: string }) {
   }
 
   if (path.startsWith("/activity")) {
-    return (
-      <NeedsConnection
-        title="Activity needs a connection"
-        body="You can still open cached groups and add expenses offline. Activity catches up when you’re back online."
-      />
-    )
+    return <OfflineActivity />
   }
 
   if (path.startsWith("/summary") || path.endsWith("/summary") || path.includes("/settle")) {
@@ -86,6 +106,7 @@ export function OfflineApp({ path }: { path: string }) {
     <NeedsConnection
       title="Unavailable offline"
       body="Go back to Groups to keep browsing your cached data."
+      showQueue
     />
   )
 }

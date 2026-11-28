@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 
-import { FlagIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react"
+import { CloudOffIcon, FlagIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
 import { CategoryIcon } from "@/components/category-icon"
@@ -25,10 +25,11 @@ import { disputeRole, updatedSinceRaised } from "@/lib/disputes"
 import { memberNameIn } from "@/lib/members"
 import { canModifyExpense } from "@/lib/expense-access"
 import { formatDay, formatINR } from "@/lib/money"
-import { enqueueDelete, isClientExpenseId } from "@/lib/offline/store"
+import { enqueueDelete, isClientExpenseId, outboxStatusForExpense } from "@/lib/offline/store"
 import type { Expense, GroupDetail, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 export function ExpenseDetail({
   expense,
@@ -43,11 +44,14 @@ export function ExpenseDetail({
   onEdit: (expense: Expense) => void
   onClose: () => void
 }) {
-  const { pending: busy, run } = useAction()
+  const { pending: busyOnline, run } = useAction()
   const flagging = useAction()
   const offline = useOfflineOptional()
+  const [busyLocal, setBusyLocal] = useState(false)
+  const busy = busyOnline || busyLocal
   const [flagOpen, setFlagOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const syncStatus = expense ? outboxStatusForExpense(offline?.outbox ?? [], expense.id) : null
   const mine = expense?.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0
   const myFlag = expense?.flags.find((flag) => flag.userId === user.id) ?? null
   const canFlag = mine > 0 && !myFlag && expense?.createdBy !== user.id
@@ -83,20 +87,20 @@ export function ExpenseDetail({
     if (!expense || !canModify) return
     const label = expense.description || "Expense"
     if (offline && (!offline.online || isClientExpenseId(expense.id))) {
-      run(
-        async () => {
+      void (async () => {
+        setBusyLocal(true)
+        try {
           await enqueueDelete({ userId: user.id, group, expenseId: expense.id, label })
           await offline.refreshSnapshot()
-          return { ok: true as const, data: undefined }
-        },
-        {
-          success: isClientExpenseId(expense.id) ? "Expense deleted" : "Delete queued — will sync later",
-          onSuccess: () => {
-            setConfirmDelete(false)
-            onClose()
-          },
-        },
-      )
+          toast.success(isClientExpenseId(expense.id) ? "Expense deleted" : "Delete queued — will sync later")
+          setConfirmDelete(false)
+          onClose()
+        } catch {
+          toast.error("Couldn't delete offline. Try again.")
+        } finally {
+          setBusyLocal(false)
+        }
+      })()
       return
     }
     run(
@@ -167,6 +171,28 @@ export function ExpenseDetail({
               </div>
             </div>
 
+            {syncStatus ? (
+              <div
+                className={cn(
+                  "flex items-start gap-2.5 rounded-[12px] px-3 py-2.5 text-sm ring-1",
+                  syncStatus === "failed"
+                    ? "bg-negative/8 text-negative ring-negative/20"
+                    : "bg-primary/8 text-primary ring-primary/20",
+                )}
+              >
+                <CloudOffIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <div className="min-w-0">
+                  <p className="font-semibold">
+                    {syncStatus === "failed" ? "Sync failed" : "Pending sync"}
+                  </p>
+                  <p className={cn("mt-0.5 text-xs", syncStatus === "failed" ? "text-negative/80" : "text-primary/80")}>
+                    {syncStatus === "failed"
+                      ? "This change didn’t reach the server. Retry from the sync queue when you’re online."
+                      : "Saved on this device — will upload when you’re back online."}
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             <section aria-label="Split">
               <SectionTitle as="h3" className="mb-3">

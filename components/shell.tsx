@@ -132,17 +132,39 @@ export function Shell({
 
   const openExpense = useCallback(
     async (groupId?: string, existing?: Expense | null) => {
-      const match = pathname.match(/^\/groups\/([^/]+)/)
-      const target = groupId ?? match?.[1] ?? (groups.length === 1 ? groups[0].id : undefined)
+      const match = routePath.match(/^\/groups\/([^/]+)/)
+      const target =
+        groupId ?? match?.[1] ?? (displayGroups.length === 1 ? displayGroups[0].id : undefined)
       if (!target) {
         setPicker(true)
         return
       }
       setExpense(existing ?? null)
       setOpen(true)
-      const known = onScreen.current?.id === target ? onScreen.current : null
-      if (known) {
-        setDetail(known)
+
+      const fromScreen = onScreen.current?.id === target ? onScreen.current : null
+      const fromCache = (() => {
+        const cached = offline?.getCachedGroup(target) ?? null
+        if (!cached) return null
+        return applyOutboxToGroup(cached, offline?.outbox ?? [], user.id)
+      })()
+
+      // Offline: never await a server action — it hangs with no network.
+      if (offline && !offline.online) {
+        const local = fromScreen ?? fromCache
+        if (local) {
+          setDetail(local)
+          setLoading(false)
+          return
+        }
+        setLoading(false)
+        toast.error("You're offline and this group isn't cached yet.")
+        setOpen(false)
+        return
+      }
+
+      if (fromScreen) {
+        setDetail(fromScreen)
         setLoading(false)
         return
       }
@@ -152,10 +174,8 @@ export function Shell({
         const result = await loadGroupAction(target)
         setLoading(false)
         if (!result.ok) {
-          const cached = await readGroupDetailSnapshot(target)
-          if (cached) {
-            const merged = applyOutboxToGroup(cached, offline?.outbox ?? [], user.id)
-            setDetail(merged)
+          if (fromCache) {
+            setDetail(fromCache)
             return
           }
           toast.error(result.error)
@@ -165,17 +185,20 @@ export function Shell({
         setDetail(result.data)
       } catch {
         setLoading(false)
+        if (fromCache) {
+          setDetail(fromCache)
+          return
+        }
         const cached = await readGroupDetailSnapshot(target)
         if (cached) {
-          const merged = applyOutboxToGroup(cached, offline?.outbox ?? [], user.id)
-          setDetail(merged)
+          setDetail(applyOutboxToGroup(cached, offline?.outbox ?? [], user.id))
           return
         }
         toast.error("You're offline and this group isn't cached yet.")
         setOpen(false)
       }
     },
-    [groups, offline?.outbox, pathname, user.id],
+    [displayGroups, offline, routePath, user.id],
   )
 
   const hideFab =

@@ -1,10 +1,12 @@
 "use client"
 
-import { CloudOffIcon, RefreshCwIcon, Trash2Icon } from "lucide-react"
+import { CloudOffIcon, PlusIcon, PencilIcon, RefreshCwIcon, Trash2Icon } from "lucide-react"
 
+import { Section } from "@/components/section"
 import { useOffline } from "@/components/offline-provider"
 import { Button } from "@/components/ui/button"
 import { formatDay } from "@/lib/money"
+import { cn } from "@/lib/utils"
 
 export function OfflineStatusPill() {
   const { online, pendingCount, failedCount } = useOffline()
@@ -23,55 +25,85 @@ export function OfflineStatusPill() {
   )
 }
 
-export function SyncQueueSection() {
+export function SyncQueueSection({
+  hideWhenEmpty = true,
+  className,
+}: {
+  /** When true (default), render nothing if the outbox is empty. */
+  hideWhenEmpty?: boolean
+  className?: string
+}) {
   const { outbox, syncing, online, syncNow, retryItem, discardItem, pendingCount, failedCount } = useOffline()
 
   if (outbox.length === 0) {
+    if (hideWhenEmpty) return null
     return (
-      <section className="rounded-[16px] bg-card px-4 py-4 ring-1 ring-border">
-        <h2 className="text-sm font-semibold">Sync queue</h2>
-        <p className="mt-1 text-sm text-muted-foreground">No pending offline changes.</p>
-      </section>
+      <Section title="Sync queue" className={className}>
+        <p className="text-sm text-muted-foreground">No pending offline changes.</p>
+      </Section>
     )
   }
 
+  const subtitle =
+    !online
+      ? "Saved on this device — syncs when you’re back online."
+      : failedCount > 0
+        ? `${failedCount} need${failedCount === 1 ? "s" : ""} a retry${pendingCount > failedCount ? ` · ${pendingCount - failedCount} waiting` : ""}`
+        : `${pendingCount} waiting to upload`
+
   return (
-    <section className="rounded-[16px] bg-card px-4 py-4 ring-1 ring-border">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold">Sync queue</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {pendingCount > 0 ? `${pendingCount} waiting` : null}
-            {pendingCount > 0 && failedCount > 0 ? " · " : null}
-            {failedCount > 0 ? `${failedCount} failed` : null}
-          </p>
-        </div>
+    <Section
+      className={className}
+      title="Sync queue"
+      action={
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
-          disabled={!online || syncing || pendingCount === 0}
+          className="text-primary"
+          disabled={!online || syncing || (pendingCount === 0 && failedCount === 0)}
           onClick={() => void syncNow()}
         >
           <RefreshCwIcon className={syncing ? "animate-spin" : undefined} />
-          Sync now
+          {syncing ? "Syncing…" : "Sync now"}
         </Button>
-      </div>
-
-      <ul className="mt-4 space-y-2.5">
-        {outbox.map((item) => (
-          <li key={item.id} className="rounded-[12px] bg-muted/40 px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+      }
+    >
+      <p className="-mt-1 mb-3 text-sm text-muted-foreground">{subtitle}</p>
+      <ul className="space-y-2">
+        {outbox.map((item) => {
+          const kind = item.kind === "delete" ? "delete" : item.payload?.id ? "edit" : "add"
+          const failed = Boolean(item.lastError)
+          const KindIcon = kind === "delete" ? Trash2Icon : kind === "edit" ? PencilIcon : PlusIcon
+          return (
+            <li
+              key={item.id}
+              className={cn(
+                "flex items-start gap-3 rounded-[16px] bg-card px-3 py-3 ring-1",
+                failed ? "ring-negative/25" : "ring-border",
+              )}
+            >
+              <span
+                className={cn(
+                  "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[10px]",
+                  failed ? "bg-negative/10 text-negative" : "bg-primary/10 text-primary",
+                )}
+              >
+                <KindIcon className="size-4" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{item.label}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {item.kind === "delete" ? "Delete" : item.payload?.id ? "Edit" : "Add"} · {formatDay(item.createdAt.slice(0, 10))}
+                  {kind === "delete" ? "Delete" : kind === "edit" ? "Edit" : "Add"} · {formatDay(item.createdAt.slice(0, 10))}
                 </p>
-                {item.lastError ? <p className="mt-1.5 text-xs text-negative">{item.lastError}</p> : null}
-                {!item.lastError ? <p className="mt-1.5 text-xs text-muted-foreground">Waiting to sync</p> : null}
+                {failed ? (
+                  <p className="mt-1.5 text-xs text-negative">{item.lastError}</p>
+                ) : (
+                  <p className="mt-1.5 text-xs font-medium text-primary">Waiting to sync</p>
+                )}
               </div>
-              <div className="flex shrink-0 gap-1">
-                {item.lastError ? (
+              <div className="flex shrink-0 gap-0.5">
+                {failed ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -94,10 +126,10 @@ export function SyncQueueSection() {
                   <Trash2Icon />
                 </Button>
               </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ul>
-    </section>
+    </Section>
   )
 }

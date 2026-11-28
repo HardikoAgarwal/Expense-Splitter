@@ -26,6 +26,7 @@ import { enqueueDelete, enqueueSave, isClientExpenseId, newClientExpenseId } fro
 import type { Expense, GroupDetail, Member, Share } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 export function ExpenseSheet({
   open,
@@ -90,8 +91,10 @@ function ExpenseForm({
   userId: string
   onDone: () => void
 }) {
-  const { pending: saving, run } = useAction()
+  const { pending: savingOnline, run } = useAction()
   const offline = useOfflineOptional()
+  const [savingLocal, setSavingLocal] = useState(false)
+  const saving = savingOnline || savingLocal
   const locked = Boolean(expense?.locked || expense?.leftMember)
   const initial = useMemo(
     () => initialState(group.members, expense, userId),
@@ -151,19 +154,21 @@ function ExpenseForm({
     }
     const label = description.trim() || "Expense"
 
-    // Queue locally when offline (or for never-synced client ids while reconnecting).
+    // Queue locally when offline — skip useAction/transitions (they hang without RSC).
     if (offline && (!offline.online || (expense?.id && isClientExpenseId(expense.id)))) {
-      run(
-        async () => {
+      void (async () => {
+        setSavingLocal(true)
+        try {
           await enqueueSave({ userId, group, payload, expenseId, label })
           await offline.refreshSnapshot()
-          return { ok: true as const, data: expenseId }
-        },
-        {
-          success: offline.online ? (expense ? updatedMessage() : "Expense added") : "Saved offline — will sync later",
-          onSuccess: onDone,
-        },
-      )
+          toast.success(offline.online ? (expense ? updatedMessage() : "Expense added") : "Saved offline — will sync later")
+          onDone()
+        } catch {
+          toast.error("Couldn't save offline. Try again.")
+        } finally {
+          setSavingLocal(false)
+        }
+      })()
       return
     }
 
@@ -194,20 +199,20 @@ function ExpenseForm({
     const label = expense.description || "Expense"
 
     if (offline && (!offline.online || isClientExpenseId(expense.id))) {
-      run(
-        async () => {
+      void (async () => {
+        setSavingLocal(true)
+        try {
           await enqueueDelete({ userId, group, expenseId: expense.id, label })
           await offline.refreshSnapshot()
-          return { ok: true as const, data: undefined }
-        },
-        {
-          success: isClientExpenseId(expense.id) ? "Expense deleted" : "Delete queued — will sync later",
-          onSuccess: () => {
-            setConfirmDelete(false)
-            onDone()
-          },
-        },
-      )
+          toast.success(isClientExpenseId(expense.id) ? "Expense deleted" : "Delete queued — will sync later")
+          setConfirmDelete(false)
+          onDone()
+        } catch {
+          toast.error("Couldn't delete offline. Try again.")
+        } finally {
+          setSavingLocal(false)
+        }
+      })()
       return
     }
 

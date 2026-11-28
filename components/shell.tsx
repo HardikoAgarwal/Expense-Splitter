@@ -29,7 +29,7 @@ import { Person } from "@/components/person"
 import { OfflineStatusPill } from "@/components/sync-queue"
 import { Button } from "@/components/ui/button"
 import { loadGroupAction } from "@/lib/actions"
-import { isAppTabHref } from "@/lib/app-nav"
+import { isAppTabHref, isOfflineBlockedHref, OFFLINE_UNAVAILABLE_MESSAGE } from "@/lib/app-nav"
 import { applyOutboxToGroup, readGroupDetailSnapshot } from "@/lib/offline/store"
 import { formatINR } from "@/lib/money"
 import type { Expense, GroupCard, GroupDetail, SessionUser } from "@/lib/types"
@@ -478,6 +478,10 @@ function useTabNavigate() {
       }
       // Offline: client router only — Next RSC navigations cannot run without a network.
       if (offlineMode) {
+        if (isOfflineBlockedHref(path || href)) {
+          toast.message(OFFLINE_UNAVAILABLE_MESSAGE)
+          return
+        }
         offline!.navigate(path || href)
         return
       }
@@ -503,14 +507,21 @@ function SideNavItem({
   children: React.ReactNode
 }) {
   const go = useTabNavigate()
+  const offline = useOfflineOptional()
+  const blocked = Boolean(offline && !offline.online && isOfflineBlockedHref(href))
   return (
     <button
       type="button"
       onClick={() => go(href)}
       aria-current={active ? "page" : undefined}
+      aria-disabled={blocked || undefined}
       className={cn(
         "relative flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-sm font-medium transition",
-        active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+        blocked
+          ? "cursor-not-allowed text-muted-foreground/45"
+          : active
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
       <span className="[&_svg]:size-[18px]">{children}</span>
@@ -539,14 +550,17 @@ function NavItem({
   children: React.ReactNode
 }) {
   const go = useTabNavigate()
+  const offline = useOfflineOptional()
+  const blocked = Boolean(offline && !offline.online && isOfflineBlockedHref(href))
   return (
     <button
       type="button"
       onClick={() => go(href)}
       aria-current={active ? "page" : undefined}
+      aria-disabled={blocked || undefined}
       className={cn(
         "relative z-10 flex h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors",
-        active ? "text-foreground" : "text-muted-foreground",
+        blocked ? "cursor-not-allowed text-muted-foreground/40" : active ? "text-foreground" : "text-muted-foreground",
       )}
     >
       <span className="pointer-events-none relative [&_svg]:size-[22px]">

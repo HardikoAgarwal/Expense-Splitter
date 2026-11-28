@@ -37,10 +37,12 @@ import { canModifyExpense } from "@/lib/expense-access"
 import { memberNameIn } from "@/lib/members"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
+import { isOfflineBlockedHref, OFFLINE_UNAVAILABLE_MESSAGE } from "@/lib/app-nav"
 import { applyOutboxToGroup, outboxStatusForExpense } from "@/lib/offline/store"
 import type { Debt, GroupDetail, Member, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 export function GroupScreen({ group: serverGroup, user }: { group: GroupDetail; user: SessionUser }) {
   const offline = useOfflineOptional()
@@ -192,13 +194,14 @@ export function GroupScreen({ group: serverGroup, user }: { group: GroupDetail; 
             <Button
               variant="outline"
               size="lg"
+              className={offline && !offline.online ? "opacity-45" : undefined}
               render={
                 <Link
                   href={`/groups/${group.id}/settle`}
                   onClick={(event) => {
                     if (offline && !offline.online) {
                       event.preventDefault()
-                      offline.navigate(`/groups/${group.id}/settle`)
+                      toast.message(OFFLINE_UNAVAILABLE_MESSAGE)
                     }
                   }}
                 />
@@ -552,12 +555,18 @@ function useOfflineNavigate() {
   return (event: React.MouseEvent, href: string) => {
     if (!offline || offline.online) return
     event.preventDefault()
+    if (isOfflineBlockedHref(href)) {
+      toast.message(OFFLINE_UNAVAILABLE_MESSAGE)
+      return
+    }
     offline.navigate(href)
   }
 }
 
 function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId: string; spentPaise: number }) {
   const go = useOfflineNavigate()
+  const offline = useOfflineOptional()
+  const blocked = Boolean(offline && !offline.online)
   const net = group.myNetPaise
   const positive = net > 0
   const negative = net < 0
@@ -583,7 +592,11 @@ function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId
         <Link
           href={`/groups/${group.id}/settle`}
           onClick={(event) => go(event, `/groups/${group.id}/settle`)}
-          className="shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-sm font-semibold backdrop-blur-sm"
+          aria-disabled={blocked || undefined}
+          className={cn(
+            "shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-sm font-semibold backdrop-blur-sm",
+            blocked && "opacity-45",
+          )}
         >
           Settle up
         </Link>
@@ -592,7 +605,11 @@ function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId
       <Link
         href={`/groups/${group.id}/summary`}
         onClick={(event) => go(event, `/groups/${group.id}/summary`)}
-        className="-mt-3 flex items-center justify-between gap-3 rounded-b-[16px] bg-card px-4 pt-6 pb-3 text-sm ring-1 ring-border transition hover:bg-muted/60 active:bg-muted"
+        aria-disabled={blocked || undefined}
+        className={cn(
+          "-mt-3 flex items-center justify-between gap-3 rounded-b-[16px] bg-card px-4 pt-6 pb-3 text-sm ring-1 ring-border transition hover:bg-muted/60 active:bg-muted",
+          blocked && "pointer-events-auto opacity-45",
+        )}
       >
         <span className="text-muted-foreground">
           Spent this month <span className="money ml-1 text-base text-foreground">{formatINR(spentPaise)}</span>
@@ -729,6 +746,8 @@ function ExpenseList({
 
 function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) {
   const go = useOfflineNavigate()
+  const offline = useOfflineOptional()
+  const blocked = Boolean(offline && !offline.online)
   return (
     <div className="space-y-5">
       <section>
@@ -782,7 +801,11 @@ function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) 
               <Link
                 href={`/groups/${group.id}/settle`}
                 onClick={(event) => go(event, `/groups/${group.id}/settle`)}
-                className="mt-3 flex h-11 items-center justify-center rounded-[12px] bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.99]"
+                aria-disabled={blocked || undefined}
+                className={cn(
+                  "mt-3 flex h-11 items-center justify-center rounded-[12px] bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.99]",
+                  blocked && "opacity-45",
+                )}
               >
                 Settle up
               </Link>

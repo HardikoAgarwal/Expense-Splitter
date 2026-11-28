@@ -7,6 +7,7 @@ import { ArrowDownLeftIcon, ArrowUpRightIcon, ChevronRightIcon, UsersIcon } from
 
 import { AppSheet } from "@/components/app-sheet"
 import { OfflineHydrator } from "@/components/offline-hydrator"
+import { useOfflineOptional } from "@/components/offline-provider"
 import { PersonStack } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +18,7 @@ import { parseJoinCode } from "@/lib/messages"
 import type { GroupCard, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 export function GroupsHome({
   user,
@@ -32,6 +34,8 @@ export function GroupsHome({
   const [code, setCode] = useState("")
   const creating = useAction()
   const joining = useAction()
+  const offline = useOfflineOptional()
+  const offlineMode = Boolean(offline && !offline.online)
   const reduce = useReducedMotion()
   const hour = new Date().getHours()
   const hello = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
@@ -39,8 +43,18 @@ export function GroupsHome({
   const owed = groups.reduce((sum, group) => sum + Math.max(group.myNetPaise, 0), 0)
   const owe = groups.reduce((sum, group) => sum + Math.max(-group.myNetPaise, 0), 0)
 
+  function openGroup(event: React.MouseEvent, groupId: string) {
+    if (!offlineMode) return
+    event.preventDefault()
+    offline!.navigate(`/groups/${groupId}`)
+  }
+
   function create(event: React.FormEvent) {
     event.preventDefault()
+    if (offlineMode) {
+      toast.message("Connect to create a group")
+      return
+    }
     // Stay on the sheet with a spinner until the new group page is ready.
     creating.run(() => createGroupAction(name), {
       navigate: (id) => `/groups/${id}`,
@@ -54,6 +68,10 @@ export function GroupsHome({
 
   function join(event: React.FormEvent) {
     event.preventDefault()
+    if (offlineMode) {
+      toast.message("Connect to join a group")
+      return
+    }
     const parsed = parseJoinCode(code)
     if (!parsed) return
     joining.run(() => joinGroupAction(parsed), {
@@ -139,6 +157,7 @@ export function GroupsHome({
               >
                 <Link
                   href={`/groups/${group.id}`}
+                  onClick={(event) => openGroup(event, group.id)}
                   className="group block h-full rounded-[16px] bg-card p-5 ring-1 ring-border shadow-[0_16px_40px_-28px_rgba(40,30,10,0.7)] transition hover:-translate-y-0.5 hover:ring-primary/30 active:scale-[0.99]"
                 >
                   <div className="flex items-center justify-between gap-3">

@@ -20,6 +20,8 @@ import type { GroupCard, GroupDetail, SessionUser } from "@/lib/types"
 type OfflineApi = {
   online: boolean
   ready: boolean
+  /** Client path used while offline (no RSC). */
+  path: string
   snapshot: OfflineSnapshot | null
   outbox: OutboxItem[]
   pendingCount: number
@@ -29,6 +31,7 @@ type OfflineApi = {
   syncNow: () => Promise<void>
   retryItem: (id: string) => Promise<void>
   discardItem: (id: string) => Promise<void>
+  navigate: (href: string) => void
   getCachedGroup: (groupId: string) => GroupDetail | null
   getCachedGroups: () => GroupCard[]
   getCachedUser: () => SessionUser | null
@@ -46,10 +49,16 @@ export function useOfflineOptional() {
   return useContext(OfflineContext)
 }
 
+function currentPath() {
+  if (typeof window === "undefined") return "/groups"
+  return `${window.location.pathname}${window.location.search}` || "/groups"
+}
+
 export function OfflineProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [online, setOnline] = useState(true)
   const [ready, setReady] = useState(false)
+  const [path, setPath] = useState("/groups")
   const [snapshot, setSnapshot] = useState<OfflineSnapshot | null>(null)
   const [syncing, setSyncing] = useState(false)
 
@@ -60,6 +69,13 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
     } catch {
       setSnapshot(null)
     }
+  }, [])
+
+  const navigate = useCallback((href: string) => {
+    const next = href.startsWith("/") ? href : `/${href}`
+    window.history.pushState({ hissaOffline: true }, "", next)
+    setPath(next.split("?")[0] || "/groups")
+    document.getElementById("main")?.scrollTo({ top: 0 })
   }, [])
 
   const syncNow = useCallback(async () => {
@@ -80,21 +96,32 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setOnline(typeof navigator === "undefined" ? true : navigator.onLine)
+    setPath(currentPath().split("?")[0] || "/groups")
     void refreshSnapshot().finally(() => setReady(true))
 
     function onOnline() {
       setOnline(true)
+      // Rejoin the real App Router at the offline path.
+      const href = currentPath()
+      router.replace(href)
+      router.refresh()
     }
     function onOffline() {
       setOnline(false)
+      setPath(currentPath().split("?")[0] || "/groups")
+    }
+    function onPop() {
+      setPath(currentPath().split("?")[0] || "/groups")
     }
     window.addEventListener("online", onOnline)
     window.addEventListener("offline", onOffline)
+    window.addEventListener("popstate", onPop)
     return () => {
       window.removeEventListener("online", onOnline)
       window.removeEventListener("offline", onOffline)
+      window.removeEventListener("popstate", onPop)
     }
-  }, [refreshSnapshot])
+  }, [refreshSnapshot, router])
 
   useEffect(() => {
     if (!online || !snapshot?.meta?.userId) return
@@ -141,6 +168,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
     return {
       online,
       ready,
+      path,
       snapshot,
       outbox,
       pendingCount: outbox.filter((item) => !item.lastError).length,
@@ -150,6 +178,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
       syncNow,
       retryItem,
       discardItem,
+      navigate,
       getCachedGroup: (groupId) => {
         if (!snapshot) return null
         return snapshot.details[groupId] ?? null
@@ -157,7 +186,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
       getCachedGroups: () => snapshot?.groups ?? [],
       getCachedUser: () => snapshot?.meta?.user ?? null,
     }
-  }, [discardItem, online, ready, refreshSnapshot, retryItem, snapshot, syncing, syncNow])
+  }, [discardItem, navigate, online, path, ready, refreshSnapshot, retryItem, snapshot, syncing, syncNow])
 
   return <OfflineContext.Provider value={api}>{children}</OfflineContext.Provider>
 }

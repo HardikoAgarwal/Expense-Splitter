@@ -22,6 +22,7 @@ import { BackLink } from "@/components/back-link"
 import { ExpenseSheet } from "@/components/expense-sheet"
 import { InstallBanner } from "@/components/install-banner"
 import { Mark } from "@/components/mark"
+import { OfflineApp } from "@/components/offline-app"
 import { OfflineHydrator } from "@/components/offline-hydrator"
 import { useOfflineOptional } from "@/components/offline-provider"
 import { Person } from "@/components/person"
@@ -97,9 +98,17 @@ export function Shell({
   const offline = useOfflineOptional()
   const usersTab = pathname.startsWith("/account") && searchParams.get("tab") === "users"
 
+  const offlineMode = Boolean(offline && !offline.online)
+  const routePath = offlineMode ? offline!.path : pathname
+  const displayGroups = offlineMode && offline!.getCachedGroups().length > 0 ? offline!.getCachedGroups() : groups
+
   function goHome() {
-    if (pathname === "/groups") {
+    if (routePath === "/groups") {
       document.getElementById("main")?.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+    if (offlineMode) {
+      offline!.navigate("/groups")
       return
     }
     router.replace("/groups")
@@ -170,19 +179,19 @@ export function Shell({
   )
 
   const hideFab =
-    pathname.startsWith("/account") ||
-    pathname.startsWith("/admin") ||
-    pathname.includes("/settle") ||
-    pathname.includes("/summary")
-  const activeGroupId = pathname.match(/^\/groups\/([^/]+)/)?.[1] ?? null
-  const groupSub = pathname.match(/^\/groups\/([^/]+)(\/(settle|summary))?$/)
+    routePath.startsWith("/account") ||
+    routePath.startsWith("/admin") ||
+    routePath.includes("/settle") ||
+    routePath.includes("/summary")
+  const activeGroupId = routePath.match(/^\/groups\/([^/]+)/)?.[1] ?? null
+  const groupSub = routePath.match(/^\/groups\/([^/]+)(\/(settle|summary))?$/)
   // Pin the top bar on group detail / settle / summary so it stays with those sticky headers.
   const pinTopBar = Boolean(groupSub)
   const topBack = groupSub
     ? groupSub[2]
       ? {
           href: `/groups/${groupSub[1]}`,
-          label: groups.find((group) => group.id === groupSub[1])?.name ?? "Group",
+          label: displayGroups.find((group) => group.id === groupSub[1])?.name ?? "Group",
         }
       : { href: "/groups", label: "Groups" }
     : null
@@ -230,16 +239,16 @@ export function Shell({
           </Button>
 
           <nav className="mt-6 flex flex-col gap-1">
-            <SideNavItem href="/groups" label="Groups" active={pathname === "/groups"}>
+            <SideNavItem href="/groups" label="Groups" active={routePath === "/groups"}>
               <UsersIcon />
             </SideNavItem>
-            <SideNavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
+            <SideNavItem href="/activity" label="Activity" active={routePath.startsWith("/activity")} badge={pending}>
               <BellIcon />
             </SideNavItem>
-            <SideNavItem href="/summary" label="Summary" active={pathname.startsWith("/summary") || pathname.endsWith("/summary")}>
+            <SideNavItem href="/summary" label="Summary" active={routePath.startsWith("/summary") || routePath.endsWith("/summary")}>
               <BarChart3Icon />
             </SideNavItem>
-            <SideNavItem href="/account" label="Account" active={pathname.startsWith("/account") && !usersTab}>
+            <SideNavItem href="/account" label="Account" active={routePath.startsWith("/account") && !usersTab}>
               <UserRoundIcon />
             </SideNavItem>
             {user.isAdmin ? (
@@ -249,17 +258,21 @@ export function Shell({
             ) : null}
           </nav>
 
-          {groups.length > 0 ? (
+          {displayGroups.length > 0 ? (
             <div className="mt-8 min-h-0 flex-1 overflow-y-auto">
               <p className="px-3 pb-2 text-[11px] font-medium tracking-[0.16em] text-muted-foreground uppercase">Your groups</p>
               <ul className="space-y-0.5">
-                {groups.map((group) => (
+                {displayGroups.map((group) => (
                   <li key={group.id}>
-                    <Link
-                      href={`/groups/${group.id}`}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (offlineMode) offline!.navigate(`/groups/${group.id}`)
+                        else router.push(`/groups/${group.id}`)
+                      }}
                       aria-current={activeGroupId === group.id ? "page" : undefined}
                       className={cn(
-                        "flex items-center justify-between gap-3 rounded-[12px] px-3 py-2 text-sm transition",
+                        "flex w-full items-center justify-between gap-3 rounded-[12px] px-3 py-2 text-left text-sm transition",
                         activeGroupId === group.id
                           ? "bg-accent font-medium text-accent-foreground"
                           : "text-foreground/80 hover:bg-muted hover:text-foreground",
@@ -269,7 +282,7 @@ export function Shell({
                       <span className={cn("money shrink-0 text-xs", tone(group.myNetPaise))}>
                         {group.myNetPaise === 0 ? "settled" : formatINR(group.myNetPaise, { signed: true })}
                       </span>
-                    </Link>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -278,16 +291,20 @@ export function Shell({
             <div className="flex-1" />
           )}
 
-          <Link
-            href="/account"
-            className="mt-4 flex items-center gap-3 rounded-[12px] px-2 py-2 transition hover:bg-muted"
+          <button
+            type="button"
+            onClick={() => {
+              if (offlineMode) offline!.navigate("/account")
+              else router.push("/account")
+            }}
+            className="mt-4 flex items-center gap-3 rounded-[12px] px-2 py-2 text-left transition hover:bg-muted"
           >
             <Person id={user.id} name={user.displayName} />
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium">{user.displayName}</span>
               <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
             </span>
-          </Link>
+          </button>
         </aside>
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -320,21 +337,25 @@ export function Shell({
                       </>
                     ) : null}
                   </div>
-                  <Link
-                    href="/account"
+                  <button
+                    type="button"
                     aria-label="Account"
+                    onClick={() => {
+                      if (offlineMode) offline!.navigate("/account")
+                      else router.push("/account")
+                    }}
                     className="touch-manipulation shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                   >
                     <Person id={user.id} name={user.displayName} />
-                  </Link>
+                  </button>
                 </div>
                 <div
                   ref={subheadRef}
                   className={cn(hasSubhead ? "px-4 pt-1.5 pb-3" : "pointer-events-none h-0 overflow-hidden")}
                 />
               </div>
-              {pathname === "/groups" ? <InstallBanner /> : null}
-              {children}
+              {routePath === "/groups" ? <InstallBanner /> : null}
+              {offlineMode ? <OfflineApp path={routePath} /> : children}
             </div>
           </main>
 
@@ -342,16 +363,16 @@ export function Shell({
             aria-label="Main"
             className="relative z-20 grid h-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom))] shrink-0 grid-cols-4 bg-background pb-[env(safe-area-inset-bottom)] md:hidden"
           >
-            <NavItem href="/groups" label="Groups" active={pathname.startsWith("/groups") && !pathname.endsWith("/summary")}>
+            <NavItem href="/groups" label="Groups" active={routePath.startsWith("/groups") && !routePath.endsWith("/summary")}>
               <UsersIcon />
             </NavItem>
-            <NavItem href="/activity" label="Activity" active={pathname.startsWith("/activity")} badge={pending}>
+            <NavItem href="/activity" label="Activity" active={routePath.startsWith("/activity")} badge={pending}>
               <BellIcon />
             </NavItem>
-            <NavItem href="/summary" label="Summary" active={pathname.startsWith("/summary") || pathname.endsWith("/summary")}>
+            <NavItem href="/summary" label="Summary" active={routePath.startsWith("/summary") || routePath.endsWith("/summary")}>
               <BarChart3Icon />
             </NavItem>
-            <NavItem href="/account" label="Account" active={pathname.startsWith("/account") || pathname.startsWith("/admin")}>
+            <NavItem href="/account" label="Account" active={routePath.startsWith("/account") || routePath.startsWith("/admin")}>
               <UserRoundIcon />
             </NavItem>
           </nav>
@@ -383,10 +404,10 @@ export function Shell({
 
       <AppSheet open={picker} onOpenChange={setPicker} title="Add to which group?" description="Pick a group, then enter the expense.">
         <div className="space-y-2 pb-2">
-          {groups.length === 0 ? (
+          {displayGroups.length === 0 ? (
             <p className="px-1 py-6 text-sm text-muted-foreground">Create a group first, then add an expense.</p>
           ) : (
-            groups.map((group) => (
+            displayGroups.map((group) => (
               <Button
                 key={group.id}
                 variant="outline"
@@ -418,22 +439,30 @@ function useTabNavigate() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const offline = useOfflineOptional()
 
   return useCallback(
     (href: string) => {
       const [path, query = ""] = href.split("?")
-      const currentQuery = searchParams.toString()
-      const samePath = pathname === path
+      const offlineMode = Boolean(offline && !offline.online)
+      const currentPath = offlineMode ? offline!.path : pathname
+      const currentQuery = offlineMode ? "" : searchParams.toString()
+      const samePath = currentPath === path
       const sameQuery = query === currentQuery || (!query && !currentQuery && samePath)
       if (samePath && sameQuery) {
         document.getElementById("main")?.scrollTo({ top: 0, behavior: "smooth" })
+        return
+      }
+      // Offline: client router only — Next RSC navigations cannot run without a network.
+      if (offlineMode) {
+        offline!.navigate(path || href)
         return
       }
       // Tab roots replace history so system Back doesn’t cycle through tabs.
       if (isAppTabHref(href) || isAppTabHref(path ?? href)) router.replace(href)
       else router.push(href)
     },
-    [pathname, router, searchParams],
+    [offline, pathname, router, searchParams],
   )
 }
 

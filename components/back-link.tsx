@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation"
 import { ChevronLeftIcon } from "lucide-react"
 
+import { useOfflineOptional } from "@/components/offline-provider"
 import { cn } from "@/lib/utils"
 
 /**
- * In-app back control. Always `replace`s to the parent route so the stack
- * stays app-like (no extra history entries, no tab-cycling on system Back).
+ * In-app back control. Uses the offline client router when disconnected;
+ * otherwise `replace`s so the stack stays app-like.
  */
 export function BackLink({
   href,
@@ -21,9 +22,14 @@ export function BackLink({
   variant?: "chip" | "bar"
 }) {
   const router = useRouter()
+  const offline = useOfflineOptional()
 
   function go(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault()
+    if (offline && !offline.online) {
+      offline.navigate(href)
+      return
+    }
     router.replace(href)
   }
 

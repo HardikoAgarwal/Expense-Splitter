@@ -1,18 +1,19 @@
 /* Hissa service worker.
- * Navigations are network-first with a cached document fallback so the installed
- * app can boot offline into the client shell (IndexedDB holds expense data).
+ * Navigations are network-first. Offline fallback only uses an *exact* cached
+ * document for that URL (never another route — that made every click look like
+ * a home refresh). If nothing matches, serve offline.html.
  * RSC/API/Supabase are never cached. Static assets stay cache-first. */
-const VERSION = "hissa-v4"
+const VERSION = "hissa-v6"
 const STATIC_CACHE = `${VERSION}-static`
 const PAGE_CACHE = `${VERSION}-pages`
 const OFFLINE_URL = "/offline.html"
-const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png", "/groups"]
+const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE.filter((path) => path !== "/groups")))
+      .then((cache) => cache.addAll(PRECACHE))
       .then(() => self.skipWaiting()),
   )
 })
@@ -42,7 +43,6 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return
   const url = new URL(request.url)
 
-  // Page navigations: network-first, then last cached document, then offline page.
   if (request.mode === "navigate" && isAppNavigation(url)) {
     event.respondWith(
       fetch(request)
@@ -54,17 +54,17 @@ self.addEventListener("fetch", (event) => {
           return response
         })
         .catch(async () => {
-          const cached =
-            (await caches.match(request)) ||
-            (await caches.match("/groups")) ||
-            (await caches.match(OFFLINE_URL))
-          return cached || Response.error()
+          const exact = await caches.match(request)
+          if (exact) return exact
+          // Same path without search (Next sometimes varies the request URL).
+          const byPath = await caches.match(url.pathname)
+          if (byPath) return byPath
+          return (await caches.match(OFFLINE_URL)) || Response.error()
         }),
     )
     return
   }
 
-  // Hashed build assets and icons never change for a URL, so cache-first is safe.
   if (isStaticAsset(url)) {
     event.respondWith(
       caches.match(request).then(

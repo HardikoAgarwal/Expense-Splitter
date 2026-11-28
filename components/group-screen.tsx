@@ -189,7 +189,22 @@ export function GroupScreen({ group: serverGroup, user }: { group: GroupDetail; 
                 <Share2Icon /> Invite
               </Button>
             ) : null}
-            <Button variant="outline" size="lg" render={<Link href={`/groups/${group.id}/settle`} />} nativeButton={false}>
+            <Button
+              variant="outline"
+              size="lg"
+              render={
+                <Link
+                  href={`/groups/${group.id}/settle`}
+                  onClick={(event) => {
+                    if (offline && !offline.online) {
+                      event.preventDefault()
+                      offline.navigate(`/groups/${group.id}/settle`)
+                    }
+                  }}
+                />
+              }
+              nativeButton={false}
+            >
               Settle up
             </Button>
             <Button size="lg" onClick={() => openExpense(group.id)}>
@@ -532,7 +547,17 @@ function MembersTag({ count }: { count: number }) {
   )
 }
 
+function useOfflineNavigate() {
+  const offline = useOfflineOptional()
+  return (event: React.MouseEvent, href: string) => {
+    if (!offline || offline.online) return
+    event.preventDefault()
+    offline.navigate(href)
+  }
+}
+
 function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId: string; spentPaise: number }) {
+  const go = useOfflineNavigate()
   const net = group.myNetPaise
   const positive = net > 0
   const negative = net < 0
@@ -557,6 +582,7 @@ function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId
         </div>
         <Link
           href={`/groups/${group.id}/settle`}
+          onClick={(event) => go(event, `/groups/${group.id}/settle`)}
           className="shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-sm font-semibold backdrop-blur-sm"
         >
           Settle up
@@ -565,6 +591,7 @@ function BalanceHero({ group, userId, spentPaise }: { group: GroupDetail; userId
     </section>
       <Link
         href={`/groups/${group.id}/summary`}
+        onClick={(event) => go(event, `/groups/${group.id}/summary`)}
         className="-mt-3 flex items-center justify-between gap-3 rounded-b-[16px] bg-card px-4 pt-6 pb-3 text-sm ring-1 ring-border transition hover:bg-muted/60 active:bg-muted"
       >
         <span className="text-muted-foreground">
@@ -701,6 +728,7 @@ function ExpenseList({
 }
 
 function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) {
+  const go = useOfflineNavigate()
   return (
     <div className="space-y-5">
       <section>
@@ -753,6 +781,7 @@ function BalanceList({ group, userId }: { group: GroupDetail; userId: string }) 
             {group.debts.some((debt) => debt.fromUserId === userId || debt.toUserId === userId) ? (
               <Link
                 href={`/groups/${group.id}/settle`}
+                onClick={(event) => go(event, `/groups/${group.id}/settle`)}
                 className="mt-3 flex h-11 items-center justify-center rounded-[12px] bg-primary text-sm font-semibold text-primary-foreground transition active:scale-[0.99]"
               >
                 Settle up

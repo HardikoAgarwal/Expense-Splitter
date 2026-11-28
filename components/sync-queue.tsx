@@ -18,20 +18,25 @@ import { formatDay } from "@/lib/money"
 import type { OutboxItem } from "@/lib/offline/types"
 import { cn } from "@/lib/utils"
 
-export function OfflineStatusPill() {
+export function OfflineStatusPill({ className }: { className?: string }) {
   const { online, pendingCount, failedCount } = useOffline()
   if (online && pendingCount === 0 && failedCount === 0) return null
+  const label = !online
+    ? "Offline"
+    : failedCount > 0
+      ? `${failedCount} sync ${failedCount === 1 ? "issue" : "issues"}`
+      : `${pendingCount} to sync`
   return (
-    <div className="pointer-events-none fixed top-[max(0.5rem,env(safe-area-inset-top))] left-1/2 z-40 -translate-x-1/2 md:top-3">
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-foreground/90 px-3 py-1 text-[11px] font-semibold text-background shadow-sm">
-        <CloudOffIcon className="size-3.5" aria-hidden />
-        {!online
-          ? "Offline"
-          : failedCount > 0
-            ? `${failedCount} sync ${failedCount === 1 ? "issue" : "issues"}`
-            : `${pendingCount} waiting to sync`}
-      </span>
-    </div>
+    <span
+      className={cn(
+        "inline-flex max-w-[9.5rem] items-center gap-1 rounded-full bg-foreground/90 px-2.5 py-1 text-[11px] font-semibold text-background shadow-sm",
+        className,
+      )}
+      title={label}
+    >
+      <CloudOffIcon className="size-3.5 shrink-0" aria-hidden />
+      <span className="truncate">{label}</span>
+    </span>
   )
 }
 

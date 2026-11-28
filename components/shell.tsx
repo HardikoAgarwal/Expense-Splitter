@@ -245,7 +245,6 @@ export function Shell({
     <ExpenseContext.Provider value={{ openExpense, registerGroup }}>
       <StickyChromeContext.Provider value={stickyChrome}>
       <OfflineHydrator user={user} groups={groups} />
-      <OfflineStatusPill />
       <div className="relative flex h-dvh flex-col md:flex-row">
         <aside
           aria-label="Main"
@@ -314,20 +313,23 @@ export function Shell({
             <div className="flex-1" />
           )}
 
-          <button
-            type="button"
-            onClick={() => {
-              if (offlineMode) offline!.navigate("/account")
-              else router.push("/account")
-            }}
-            className="mt-4 flex items-center gap-3 rounded-[12px] px-2 py-2 text-left transition hover:bg-muted"
-          >
-            <Person id={user.id} name={user.displayName} />
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium">{user.displayName}</span>
-              <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
-            </span>
-          </button>
+          <div className="mt-4 flex items-center gap-2 px-1">
+            <OfflineStatusPill className="hidden md:inline-flex" />
+            <button
+              type="button"
+              onClick={() => {
+                if (offlineMode) offline!.navigate("/account")
+                else router.push("/account")
+              }}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] px-2 py-2 text-left transition hover:bg-muted"
+            >
+              <Person id={user.id} name={user.displayName} />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{user.displayName}</span>
+                <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+              </span>
+            </button>
+          </div>
         </aside>
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -360,17 +362,20 @@ export function Shell({
                       </>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    aria-label="Account"
-                    onClick={() => {
-                      if (offlineMode) offline!.navigate("/account")
-                      else router.push("/account")
-                    }}
-                    className="touch-manipulation shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  >
-                    <Person id={user.id} name={user.displayName} />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <OfflineStatusPill />
+                    <button
+                      type="button"
+                      aria-label="Account"
+                      onClick={() => {
+                        if (offlineMode) offline!.navigate("/account")
+                        else router.push("/account")
+                      }}
+                      className="touch-manipulation shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    >
+                      <Person id={user.id} name={user.displayName} />
+                    </button>
+                  </div>
                 </div>
                 <div
                   ref={subheadRef}

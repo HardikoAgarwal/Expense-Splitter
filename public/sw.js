@@ -1,17 +1,18 @@
 /* Hissa service worker.
- * Caching is deliberately conservative: only immutable build assets, icons and the
- * offline page are cached. Pages, server actions and Supabase calls always go to the
- * network so balances are never stale. */
-const VERSION = "hissa-v3"
+ * Navigations are network-first with a cached document fallback so the installed
+ * app can boot offline into the client shell (IndexedDB holds expense data).
+ * RSC/API/Supabase are never cached. Static assets stay cache-first. */
+const VERSION = "hissa-v4"
 const STATIC_CACHE = `${VERSION}-static`
+const PAGE_CACHE = `${VERSION}-pages`
 const OFFLINE_URL = "/offline.html"
-const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png"]
+const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png", "/groups"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
+      .then((cache) => cache.addAll(PRECACHE.filter((path) => path !== "/groups")))
       .then(() => self.skipWaiting()),
   )
 })
@@ -29,14 +30,37 @@ function isStaticAsset(url) {
   return url.origin === self.location.origin && (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/"))
 }
 
+function isAppNavigation(url) {
+  if (url.origin !== self.location.origin) return false
+  const path = url.pathname
+  if (path.startsWith("/_next/") || path.startsWith("/icons/") || path === OFFLINE_URL) return false
+  return true
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request
   if (request.method !== "GET") return
   const url = new URL(request.url)
 
-  // Page navigations: always the network; show the offline page only when it fails.
-  if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)))
+  // Page navigations: network-first, then last cached document, then offline page.
+  if (request.mode === "navigate" && isAppNavigation(url)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone()
+            caches.open(PAGE_CACHE).then((cache) => cache.put(request, copy))
+          }
+          return response
+        })
+        .catch(async () => {
+          const cached =
+            (await caches.match(request)) ||
+            (await caches.match("/groups")) ||
+            (await caches.match(OFFLINE_URL))
+          return cached || Response.error()
+        }),
+    )
     return
   }
 
@@ -56,7 +80,6 @@ self.addEventListener("fetch", (event) => {
       ),
     )
   }
-  // Everything else (RSC payloads, API, Supabase) falls through to the network.
 })
 
 self.addEventListener("push", (event) => {

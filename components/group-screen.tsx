@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronRightIcon, LockIcon, LogOutIcon, PlusIcon, Trash2Icon, SettingsIcon, Share2Icon } from "lucide-react"
@@ -14,6 +14,8 @@ import { ExpenseFilterBar } from "@/components/expense-filters"
 import { Person } from "@/components/person"
 import { ShowList } from "@/components/show-list"
 import { CopyIconButton, PlainMessage, ShareActions } from "@/components/share-actions"
+import { OfflineHydrator } from "@/components/offline-hydrator"
+import { useOfflineOptional } from "@/components/offline-provider"
 import { StickySubhead, useExpense, useRegisterGroup } from "@/components/shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,11 +37,19 @@ import { canModifyExpense } from "@/lib/expense-access"
 import { memberNameIn } from "@/lib/members"
 import { formatDay, formatINR, formatMonth, monthStartISO, todayISO } from "@/lib/money"
 import { appBaseUrl, groupInviteMessage } from "@/lib/messages"
+import { applyOutboxToGroup, outboxStatusForExpense } from "@/lib/offline/store"
 import type { Debt, GroupDetail, Member, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
 
-export function GroupScreen({ group, user }: { group: GroupDetail; user: SessionUser }) {
+export function GroupScreen({ group: serverGroup, user }: { group: GroupDetail; user: SessionUser }) {
+  const offline = useOfflineOptional()
+  const group = useMemo(() => {
+    const cached = offline?.getCachedGroup(serverGroup.id)
+    const base = offline && !offline.online && cached ? cached : serverGroup
+    if (!offline?.outbox.length) return base
+    return applyOutboxToGroup(base, offline.outbox, user.id)
+  }, [offline, offline?.online, offline?.outbox, offline?.snapshot, serverGroup, user.id])
   const { openExpense } = useExpense()
   useRegisterGroup(group)
   const [tab, setTab] = useState<"expenses" | "balances">("expenses")
@@ -131,6 +141,7 @@ export function GroupScreen({ group, user }: { group: GroupDetail; user: Session
 
   return (
     <div>
+      <OfflineHydrator user={user} group={serverGroup} />
       <StickySubhead>
         <div className="flex min-w-0 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -583,6 +594,7 @@ function ExpenseList({
   onAdd: () => void
   onClearFilters: () => void
 }) {
+  const offline = useOfflineOptional()
   if (group.expenses.length > 0 && expenses.length === 0) {
     return (
       <div className="flex flex-col items-center rounded-[16px] bg-card px-6 py-10 text-center ring-1 ring-border">
@@ -644,6 +656,20 @@ function ExpenseList({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
                   <span className="truncate font-medium">{expense.description}</span>
+                  {(() => {
+                    const status = outboxStatusForExpense(offline?.outbox ?? [], expense.id)
+                    if (!status) return null
+                    return (
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                          status === "failed" ? "bg-negative/15 text-negative" : "bg-primary/15 text-primary",
+                        )}
+                      >
+                        {status === "failed" ? "Sync failed" : "Pending"}
+                      </span>
+                    )
+                  })()}
                   {expense.disputed ? (
                     <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-semibold text-warning">
                       {disputeChip(

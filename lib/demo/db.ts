@@ -98,7 +98,9 @@ type SignupLinkRow = {
   usedAt: string | null
 }
 
-type DemoExpense = Omit<Expense, "locked" | "disputed" | "flags">
+type DemoExpense = Omit<Expense, "locked" | "disputed" | "flags"> & {
+  clientMutationId?: string | null
+}
 
 type DemoFlag = {
   id: string
@@ -928,7 +930,21 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
     }
 
     const now = new Date().toISOString()
-    if (!input.id) {
+    const mutationId = input.clientMutationId?.trim() || null
+    let targetId = input.id
+
+    // Idempotent create: reuse the row keyed by (creator, clientMutationId).
+    if (!targetId && mutationId) {
+      const prior = db.expenses.find(
+        (expense) =>
+          expense.createdBy === userId &&
+          expense.groupId === input.groupId &&
+          expense.clientMutationId === mutationId,
+      )
+      if (prior) targetId = prior.id
+    }
+
+    if (!targetId) {
       const expense: DemoExpense = {
         id: randomUUID(),
         groupId: input.groupId,
@@ -941,6 +957,7 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
         createdAt: now,
         updatedAt: now,
         shares,
+        clientMutationId: mutationId,
       }
       db.expenses.push(expense)
       recordShareNotices(db, userId, expense, new Set())
@@ -948,7 +965,7 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
       return expense.id
     }
 
-    const existing = db.expenses.find((expense) => expense.id === input.id)
+    const existing = db.expenses.find((expense) => expense.id === targetId)
     if (!existing || existing.groupId !== input.groupId) throw new AppError("Expense not found")
     if (!canModifyExpense(existing, userId, expenseAccess(db, existing, userId))) throw new AppError(ONLY_CREATOR_MESSAGE)
     const gone = leftMemberIn(db, existing)
@@ -965,6 +982,7 @@ export async function saveExpense(userId: string, input: SaveExpenseInput): Prom
     existing.category = input.category
     existing.shares = shares
     existing.updatedAt = now
+    if (mutationId && !existing.clientMutationId) existing.clientMutationId = mutationId
     recordShareNotices(db, userId, existing, previous)
     recordChangeNotices(db, userId, "edited", before, demoSnapshot(existing))
     await persist(db)

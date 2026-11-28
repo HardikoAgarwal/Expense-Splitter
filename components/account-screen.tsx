@@ -24,6 +24,7 @@ import { AppSheet } from "@/components/app-sheet"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
 import { PushToggle } from "@/components/push-toggle"
+import { SyncQueueSection } from "@/components/sync-queue"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -210,6 +211,10 @@ function ProfileSettings({ user, upiId, pushKey }: { user: SessionUser; upiId: s
         </SectionTitle>
         <ThemePicker />
       </section>
+
+      <div className="mt-6">
+        <SyncQueueSection />
+      </div>
 
       {user.demo ? <Notice title="Demo mode">Local ledger. Sign in as the other roommate to approve a payment.</Notice> : null}
 

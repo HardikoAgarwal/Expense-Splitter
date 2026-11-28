@@ -6,6 +6,7 @@ import { CheckIcon, CircleCheckIcon, CopyIcon, SmartphoneIcon } from "lucide-rea
 import { toast } from "sonner"
 
 import { BackLink } from "@/components/back-link"
+import { useOfflineOptional } from "@/components/offline-provider"
 import { Field, FieldLabel, SECTION_TITLE, SectionTitle } from "@/components/field"
 import { Notice } from "@/components/notice"
 import { Person } from "@/components/person"
@@ -63,6 +64,7 @@ export function SettleScreen({
   const { pending: saving, run } = useAction()
   const resolver = useAction()
   const desktop = useDesktop()
+  const offline = useOfflineOptional()
 
   const other = others.find((member) => member.id === otherId)
   const firstName = other?.displayName.split(" ")[0] ?? "them"
@@ -138,6 +140,11 @@ export function SettleScreen({
         <BackLink href={`/groups/${group.id}`} label={group.name} />
       </div>
       <h1 className="text-[1.75rem] font-semibold tracking-tight">Settle up</h1>
+      {offline && !offline.online ? (
+        <p className="mt-3 rounded-[12px] bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+          Settling up needs a connection. You can still add expenses offline — they sync when you’re back online.
+        </p>
+      ) : null}
 
       {others.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">Invite someone before you can settle.</p>

@@ -219,6 +219,11 @@ export type SaveExpenseInput = {
   expenseDate: string
   category: string | null
   shares: Share[]
+  /**
+   * Stable client key for offline creates. Retries with the same id must not
+   * insert a second row if the first request already succeeded.
+   */
+  clientMutationId?: string
 }
 
 export type ActionResult<T = undefined> =

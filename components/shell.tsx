@@ -22,10 +22,14 @@ import { BackLink } from "@/components/back-link"
 import { ExpenseSheet } from "@/components/expense-sheet"
 import { InstallBanner } from "@/components/install-banner"
 import { Mark } from "@/components/mark"
+import { OfflineHydrator } from "@/components/offline-hydrator"
+import { useOfflineOptional } from "@/components/offline-provider"
 import { Person } from "@/components/person"
+import { OfflineStatusPill } from "@/components/sync-queue"
 import { Button } from "@/components/ui/button"
 import { loadGroupAction } from "@/lib/actions"
 import { isAppTabHref } from "@/lib/app-nav"
+import { applyOutboxToGroup, readGroupDetailSnapshot } from "@/lib/offline/store"
 import { formatINR } from "@/lib/money"
 import type { Expense, GroupCard, GroupDetail, SessionUser } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -90,6 +94,7 @@ export function Shell({
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const offline = useOfflineOptional()
   const usersTab = pathname.startsWith("/account") && searchParams.get("tab") === "users"
 
   function goHome() {
@@ -134,16 +139,34 @@ export function Shell({
       }
       setDetail(null)
       setLoading(true)
-      const result = await loadGroupAction(target)
-      setLoading(false)
-      if (!result.ok) {
-        toast.error(result.error)
+      try {
+        const result = await loadGroupAction(target)
+        setLoading(false)
+        if (!result.ok) {
+          const cached = await readGroupDetailSnapshot(target)
+          if (cached) {
+            const merged = applyOutboxToGroup(cached, offline?.outbox ?? [], user.id)
+            setDetail(merged)
+            return
+          }
+          toast.error(result.error)
+          setOpen(false)
+          return
+        }
+        setDetail(result.data)
+      } catch {
+        setLoading(false)
+        const cached = await readGroupDetailSnapshot(target)
+        if (cached) {
+          const merged = applyOutboxToGroup(cached, offline?.outbox ?? [], user.id)
+          setDetail(merged)
+          return
+        }
+        toast.error("You're offline and this group isn't cached yet.")
         setOpen(false)
-        return
       }
-      setDetail(result.data)
     },
-    [groups, pathname],
+    [groups, offline?.outbox, pathname, user.id],
   )
 
   const hideFab =
@@ -189,6 +212,8 @@ export function Shell({
   return (
     <ExpenseContext.Provider value={{ openExpense, registerGroup }}>
       <StickyChromeContext.Provider value={stickyChrome}>
+      <OfflineHydrator user={user} groups={groups} />
+      <OfflineStatusPill />
       <div className="relative flex h-dvh flex-col md:flex-row">
         <aside
           aria-label="Main"

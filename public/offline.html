@@ -17,12 +17,16 @@
       img { width: 64px; height: 64px; border-radius: 16px; }
       h1 { font-size: 22px; margin: 16px 0 6px; letter-spacing: -0.01em; }
       p { margin: 0; color: #6f675c; line-height: 1.5; font-size: 15px; }
-      button { margin-top: 22px; height: 48px; width: 100%; border: 0; border-radius: 12px; font: inherit;
-        font-weight: 600; color: #f6f3ec; background: linear-gradient(165deg, #2e8056, #16543e); cursor: pointer; }
+      .actions { margin-top: 22px; display: grid; gap: 10px; }
+      button, a.button { height: 48px; width: 100%; border: 0; border-radius: 12px; font: inherit;
+        font-weight: 600; display: grid; place-items: center; text-decoration: none; cursor: pointer; }
+      .primary { color: #f6f3ec; background: linear-gradient(165deg, #2e8056, #16543e); }
+      .secondary { color: #2b2620; background: #efeae2; }
       @media (prefers-color-scheme: dark) {
         body { background: #1c1a17; color: #f1ede6; }
         .card { background: #26231f; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }
         p { color: #a9a196; }
+        .secondary { color: #f1ede6; background: #3a3530; }
       }
     </style>
   </head>
@@ -30,8 +34,11 @@
     <main class="card">
       <img src="/icons/icon-192.png" alt="" />
       <h1>You're offline</h1>
-      <p>Hissa needs a connection to show your latest balances. Check your internet and try again.</p>
-      <button type="button" onclick="location.reload()">Try again</button>
+      <p>Open a page you’ve used before to keep browsing cached groups and queue expenses. They’ll sync when you’re back online.</p>
+      <div class="actions">
+        <a class="button primary" href="/groups">Open Groups</a>
+        <button type="button" class="secondary" onclick="location.reload()">Try again</button>
+      </div>
     </main>
   </body>
 </html>

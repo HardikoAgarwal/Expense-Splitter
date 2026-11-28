@@ -17,10 +17,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SECTION_TITLE } from "@/components/field"
+import { useOfflineOptional } from "@/components/offline-provider"
 import { deleteExpenseAction, saveExpenseAction } from "@/lib/actions"
 import { CATEGORIES } from "@/lib/categories"
 import { splitEqually, validateShares } from "@/lib/ledger"
 import { formatDay, formatINR, paiseToInput, rupeesToPaise, todayISO } from "@/lib/money"
+import { enqueueDelete, enqueueSave, isClientExpenseId, newClientExpenseId } from "@/lib/offline/store"
 import type { Expense, GroupDetail, Member, Share } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
@@ -89,6 +91,7 @@ function ExpenseForm({
   onDone: () => void
 }) {
   const { pending: saving, run } = useAction()
+  const offline = useOfflineOptional()
   const locked = Boolean(expense?.locked || expense?.leftMember)
   const initial = useMemo(
     () => initialState(group.members, expense, userId),
@@ -134,32 +137,98 @@ function ExpenseForm({
 
   function save() {
     if (!canSave || !shares || totalPaise === null) return
-    // The sheet closes and the toast shows only once the group list has the new numbers.
+    const expenseId = expense?.id ?? newClientExpenseId()
+    const payload = {
+      id: expense?.id && !isClientExpenseId(expense.id) ? expense.id : undefined,
+      groupId: group.id,
+      description,
+      amountPaise: totalPaise,
+      payerId,
+      expenseDate,
+      category,
+      shares,
+      clientMutationId: isClientExpenseId(expenseId) ? expenseId : undefined,
+    }
+    const label = description.trim() || "Expense"
+
+    // Queue locally when offline (or for never-synced client ids while reconnecting).
+    if (offline && (!offline.online || (expense?.id && isClientExpenseId(expense.id)))) {
+      run(
+        async () => {
+          await enqueueSave({ userId, group, payload, expenseId, label })
+          await offline.refreshSnapshot()
+          return { ok: true as const, data: expenseId }
+        },
+        {
+          success: offline.online ? (expense ? updatedMessage() : "Expense added") : "Saved offline — will sync later",
+          onSuccess: onDone,
+        },
+      )
+      return
+    }
+
     run(
-      () =>
-        saveExpenseAction({
-          id: expense?.id,
-          groupId: group.id,
-          description,
-          amountPaise: totalPaise,
-          payerId,
-          expenseDate,
-          category,
-          shares,
-        }),
-      { success: expense ? updatedMessage() : "Expense added", onSuccess: onDone },
+      async () => {
+        try {
+          return await saveExpenseAction(payload)
+        } catch {
+          await enqueueSave({ userId, group, payload, expenseId, label })
+          await offline?.refreshSnapshot()
+          return { ok: true as const, data: expenseId }
+        }
+      },
+      {
+        success: (id) =>
+          typeof id === "string" && isClientExpenseId(id)
+            ? "Saved offline — will sync later"
+            : expense
+              ? updatedMessage()
+              : "Expense added",
+        onSuccess: onDone,
+      },
     )
   }
 
   function remove() {
     if (!expense) return
-    run(() => deleteExpenseAction(expense.id), {
-      success: "Expense deleted",
-      onSuccess: () => {
-        setConfirmDelete(false)
-        onDone()
+    const label = expense.description || "Expense"
+
+    if (offline && (!offline.online || isClientExpenseId(expense.id))) {
+      run(
+        async () => {
+          await enqueueDelete({ userId, group, expenseId: expense.id, label })
+          await offline.refreshSnapshot()
+          return { ok: true as const, data: undefined }
+        },
+        {
+          success: isClientExpenseId(expense.id) ? "Expense deleted" : "Delete queued — will sync later",
+          onSuccess: () => {
+            setConfirmDelete(false)
+            onDone()
+          },
+        },
+      )
+      return
+    }
+
+    run(
+      async () => {
+        try {
+          return await deleteExpenseAction(expense.id)
+        } catch {
+          await enqueueDelete({ userId, group, expenseId: expense.id, label })
+          await offline?.refreshSnapshot()
+          return { ok: true as const, data: undefined }
+        }
       },
-    })
+      {
+        success: "Expense deleted",
+        onSuccess: () => {
+          setConfirmDelete(false)
+          onDone()
+        },
+      },
+    )
   }
 
   function fillRest(memberId: string) {

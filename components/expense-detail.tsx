@@ -18,12 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useOfflineOptional } from "@/components/offline-provider"
 import { deleteExpenseAction, flagExpenseAction, resolveFlagAction } from "@/lib/actions"
 import { categoryLabel } from "@/lib/categories"
 import { disputeRole, updatedSinceRaised } from "@/lib/disputes"
 import { memberNameIn } from "@/lib/members"
 import { canModifyExpense } from "@/lib/expense-access"
 import { formatDay, formatINR } from "@/lib/money"
+import { enqueueDelete, isClientExpenseId } from "@/lib/offline/store"
 import type { Expense, GroupDetail, SessionUser } from "@/lib/types"
 import { useAction } from "@/lib/use-action"
 import { cn } from "@/lib/utils"
@@ -43,6 +45,7 @@ export function ExpenseDetail({
 }) {
   const { pending: busy, run } = useAction()
   const flagging = useAction()
+  const offline = useOfflineOptional()
   const [flagOpen, setFlagOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const mine = expense?.shares.find((share) => share.userId === user.id)?.sharePaise ?? 0
@@ -78,13 +81,42 @@ export function ExpenseDetail({
 
   function remove() {
     if (!expense || !canModify) return
-    run(() => deleteExpenseAction(expense.id), {
-      success: "Expense deleted",
-      onSuccess: () => {
-        setConfirmDelete(false)
-        onClose()
+    const label = expense.description || "Expense"
+    if (offline && (!offline.online || isClientExpenseId(expense.id))) {
+      run(
+        async () => {
+          await enqueueDelete({ userId: user.id, group, expenseId: expense.id, label })
+          await offline.refreshSnapshot()
+          return { ok: true as const, data: undefined }
+        },
+        {
+          success: isClientExpenseId(expense.id) ? "Expense deleted" : "Delete queued — will sync later",
+          onSuccess: () => {
+            setConfirmDelete(false)
+            onClose()
+          },
+        },
+      )
+      return
+    }
+    run(
+      async () => {
+        try {
+          return await deleteExpenseAction(expense.id)
+        } catch {
+          await enqueueDelete({ userId: user.id, group, expenseId: expense.id, label })
+          await offline?.refreshSnapshot()
+          return { ok: true as const, data: undefined }
+        }
       },
-    })
+      {
+        success: "Expense deleted",
+        onSuccess: () => {
+          setConfirmDelete(false)
+          onClose()
+        },
+      },
+    )
   }
 
   return (

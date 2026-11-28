@@ -386,4 +386,36 @@ describe("demo ledger rules", () => {
       "Meera Shah",
     ])
   })
+
+  it("keeps one expense when the same clientMutationId is saved twice", async () => {
+    const db = await import("@/lib/demo/db")
+    const aarav = await db.authenticate("aarav@hissa.app", "demo1234")
+    const mutationId = "offline-idempotent-snacks"
+    const payload = {
+      groupId: IDS.flat,
+      description: "Snacks",
+      amountPaise: 4000,
+      payerId: aarav.id,
+      expenseDate: "2026-11-16",
+      category: "dining" as const,
+      shares: splitEqually(4000, [IDS.aarav, IDS.meera]),
+      clientMutationId: mutationId,
+    }
+
+    const first = await db.saveExpense(aarav.id, payload)
+    const second = await db.saveExpense(aarav.id, {
+      ...payload,
+      description: "Snacks (retry)",
+      amountPaise: 6000,
+      shares: splitEqually(6000, [IDS.aarav, IDS.meera]),
+    })
+    expect(second).toBe(first)
+
+    const group = await db.getGroup(aarav.id, IDS.flat)
+    const matches = group?.expenses.filter((expense) => expense.description.startsWith("Snacks")) ?? []
+    expect(matches).toHaveLength(1)
+    expect(matches[0].id).toBe(first)
+    expect(matches[0].amountPaise).toBe(6000)
+    expect(matches[0].description).toBe("Snacks (retry)")
+  })
 })

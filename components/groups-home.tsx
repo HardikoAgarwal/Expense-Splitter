@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import { ArrowDownLeftIcon, ArrowUpRightIcon, ChevronRightIcon, UsersIcon } from "lucide-react"
 
 import { AppSheet } from "@/components/app-sheet"
+import { OfflineHydrator } from "@/components/offline-hydrator"
 import { PersonStack } from "@/components/person"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,6 +68,7 @@ export function GroupsHome({
 
   return (
     <div className="px-4 pt-4 md:px-0 md:pt-0">
+      <OfflineHydrator user={user} groups={groups} />
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:pt-6">
         <div>
           <p className="hidden text-sm font-medium tracking-[0.18em] text-primary uppercase md:block">Overview</p>

@@ -655,6 +655,7 @@ export async function saveExpense(input: SaveExpenseInput) {
       user_id: share.userId,
       share_paise: share.sharePaise,
     })),
+    p_client_mutation_id: input.clientMutationId ?? null,
   })
   fail(error)
   return data as string
